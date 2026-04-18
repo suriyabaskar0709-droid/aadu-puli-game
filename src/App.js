@@ -11,6 +11,7 @@ function App() {
   const [selected, setSelected] = useState(null);
   const [turn, setTurn] = useState("goat");
   const [goatsPlaced, setGoatsPlaced] = useState(0);
+  const [goatsKilled, setGoatsKilled] = useState(0);
 
   console.log("TURN:", turn, "SELECTED:", selected);
 
@@ -19,55 +20,75 @@ function App() {
     for (let mid of connections[from] || []) {
       if (pieces[mid] !== "goat") continue;
 
-      if (connections[mid]?.includes(to)) {
-        if (!connections[from].includes(to)) {
-          return mid;
-        }
-      }
+      if (!connections[mid]?.includes(to)) continue;
+
+      // ❌ prevent direct move
+      if (connections[from].includes(to)) continue;
+
+      // 🔥 KEY: check straight-line (no bend)
+      const fromNeighbors = connections[from] || [];
+      const midNeighbors = connections[mid] || [];
+
+      // find common nodes between from & to
+      const common = (connections[from] || []).filter((n) =>
+        (connections[to] || []).includes(n),
+      );
+
+      // if more than 1 shared path → likely bend → reject
+      if (common.length > 1) continue;
+
+      return mid;
     }
+
     return null;
   }
-
   // 🔥 MOVE FUNCTION
   function movePiece(from, to) {
     const pieceType = pieces[from];
 
-    // 🔥 CAPTURE FIRST
+    // 🔥 TIGER CAPTURE
     if (pieceType === "tiger") {
       const mid = findCapture(from, to);
 
       if (mid !== null && !pieces[to]) {
-        console.log("🔥 CAPTURE:", from, "→", to, "remove", mid);
-
         setPieces((prev) => {
           const newState = { ...prev };
+
           newState[to] = "tiger";
           delete newState[from];
           delete newState[mid];
+
           return newState;
         });
 
-        return;
+        setGoatsKilled((prev) => prev + 1);
+        return true; // ✅ VALID MOVE
       }
     }
 
-    // 🟢 NORMAL MOVE
+    // 🟢 NORMAL MOVE (GOAT + TIGER)
     if (connections[from]?.includes(to) && !pieces[to]) {
       setPieces((prev) => {
         const newState = { ...prev };
+
         newState[to] = pieceType;
         delete newState[from];
+
         return newState;
       });
+
+      return true; // ✅ VALID MOVE
     }
+
+    return false; // ❌ INVALID MOVE
   }
 
   // 🔥 CLICK HANDLER (FIXED CLEANLY)
   function handleClick(id) {
     const piece = pieces[id];
 
-    // 🐐 GOAT PLACEMENT
-    if (goatsPlaced < 15 && turn === "goat") {
+    // 🐐 PHASE 1: GOAT PLACEMENT
+    if (turn === "goat" && goatsPlaced < 15) {
       if (!piece) {
         setPieces((prev) => ({
           ...prev,
@@ -79,24 +100,28 @@ function App() {
       return;
     }
 
-    // 🐅 TIGER TURN
+    // 🐅 TIGER TURN (ALWAYS WORKS)
     if (turn === "tiger") {
       if (selected === null) {
         if (piece === "tiger") {
-          console.log("Selecting tiger at", id);
           setSelected(id);
         }
         return;
       }
 
-      movePiece(selected, id);
+      const moved = movePiece(selected, id);
+
+      if (!moved) {
+        alert("❌ Invalid move! Try again.");
+        return; // 🔥 DO NOT CHANGE TURN
+      }
+
       setSelected(null);
       setTurn("goat");
       return;
     }
-
-    // 🐐 GOAT MOVEMENT AFTER 15
-    if (goatsPlaced >= 15 && turn === "goat") {
+    // 🐐 PHASE 2: GOAT MOVEMENT
+    if (turn === "goat" && goatsPlaced >= 15) {
       if (selected === null) {
         if (piece === "goat") {
           setSelected(id);
@@ -104,13 +129,15 @@ function App() {
         return;
       }
 
-      if (!piece && connections[selected]?.includes(id)) {
-        movePiece(selected, id);
-        setSelected(null);
-        setTurn("tiger");
-      } else {
-        setSelected(null);
+      const moved = movePiece(selected, id);
+
+      if (!moved) {
+        alert("❌ Invalid move!");
+        return;
       }
+
+      setSelected(null);
+      setTurn("tiger");
     }
   }
 
@@ -125,7 +152,16 @@ function App() {
     >
       <h1 style={{ textAlign: "center" }}>Aadu Puli Attam</h1>
       <h2 style={{ textAlign: "center" }}>Turn: {turn}</h2>
-      <h3 style={{ textAlign: "center" }}>Goats: {goatsPlaced}/15</h3>
+
+      <h3 style={{ textAlign: "center" }}>Goats Placed: {goatsPlaced}/15</h3>
+
+      <h3 style={{ textAlign: "center" }}>
+        Goats Remaining: {15 - goatsPlaced}
+      </h3>
+
+      <h3 style={{ textAlign: "center", color: "red" }}>
+        Goats Killed: {goatsKilled}
+      </h3>
 
       <div
         style={{
