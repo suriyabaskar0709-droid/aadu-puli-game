@@ -12,6 +12,7 @@ function App() {
   const [turn, setTurn] = useState("goat");
   const [goatsPlaced, setGoatsPlaced] = useState(0);
   const [goatsKilled, setGoatsKilled] = useState(0);
+  const [winner, setWinner] = useState(null);
 
   console.log("TURN:", turn, "SELECTED:", selected);
 
@@ -35,12 +36,62 @@ function App() {
       );
 
       // if more than 1 shared path → likely bend → reject
-      if (common.length > 1) continue;
+      if (
+        common.length > 1 &&
+        !(from >= 1 && from <= 6 && to >= 1 && to <= 6)
+      ) {
+        continue;
+      }
 
       return mid;
     }
 
     return null;
+  }
+  function tigerCanMove(pos, currentPieces) {
+    // 🟢 NORMAL MOVES
+    for (let next of connections[pos] || []) {
+      if (!currentPieces[next]) {
+        return true;
+      }
+    }
+
+    // 🔥 CAPTURE MOVES
+    for (let mid of connections[pos] || []) {
+      // must be goat
+      if (currentPieces[mid] !== "goat") continue;
+
+      // check jump destination
+      for (let landing of connections[mid] || []) {
+        // landing must be empty
+        if (currentPieces[landing]) continue;
+
+        // landing cannot be original position
+        if (landing === pos) continue;
+
+        // must form valid capture
+        const result = findCapture(pos, landing);
+
+        if (result === mid) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+  function checkGoatWin(currentPieces) {
+    const tigerPositions = Object.keys(currentPieces).filter(
+      (k) => currentPieces[k] === "tiger",
+    );
+
+    for (let pos of tigerPositions) {
+      if (tigerCanMove(Number(pos), currentPieces)) {
+        return false;
+      }
+    }
+
+    return true;
   }
   // 🔥 MOVE FUNCTION
   function movePiece(from, to) {
@@ -58,10 +109,31 @@ function App() {
           delete newState[from];
           delete newState[mid];
 
+          // 🐐 GOAT WIN CHECK
+          if (checkGoatWin(newState)) {
+            setWinner("goat");
+
+            setTimeout(() => {
+              alert("🐐 Goats Win!");
+            }, 100);
+          }
+
           return newState;
         });
 
-        setGoatsKilled((prev) => prev + 1);
+        setGoatsKilled((prev) => {
+          const updated = prev + 1;
+
+          if (updated >= 5) {
+            setWinner("tiger");
+
+            setTimeout(() => {
+              alert("🐅 Tigers Win!");
+            }, 100);
+          }
+
+          return updated;
+        });
         return true; // ✅ VALID MOVE
       }
     }
@@ -74,17 +146,26 @@ function App() {
         newState[to] = pieceType;
         delete newState[from];
 
+        // 🐐 GOAT WIN CHECK
+        if (checkGoatWin(newState)) {
+          setWinner("goat");
+
+          setTimeout(() => {
+            alert("🐐 Goats Win!");
+          }, 100);
+        }
+
         return newState;
       });
 
-      return true; // ✅ VALID MOVE
+      return true;
     }
-
-    return false; // ❌ INVALID MOVE
+    return false;
   }
 
   // 🔥 CLICK HANDLER (FIXED CLEANLY)
   function handleClick(id) {
+    if (winner) return;
     const piece = pieces[id];
 
     // 🐐 PHASE 1: GOAT PLACEMENT
@@ -102,10 +183,14 @@ function App() {
 
     // 🐅 TIGER TURN (ALWAYS WORKS)
     if (turn === "tiger") {
+      // 🔥 selecting tiger
+      if (piece === "tiger") {
+        setSelected(id);
+        return;
+      }
+
+      // no tiger selected yet
       if (selected === null) {
-        if (piece === "tiger") {
-          setSelected(id);
-        }
         return;
       }
 
@@ -113,7 +198,7 @@ function App() {
 
       if (!moved) {
         alert("❌ Invalid move! Try again.");
-        return; // 🔥 DO NOT CHANGE TURN
+        return;
       }
 
       setSelected(null);
@@ -152,6 +237,16 @@ function App() {
     >
       <h1 style={{ textAlign: "center" }}>Aadu Puli Attam</h1>
       <h2 style={{ textAlign: "center" }}>Turn: {turn}</h2>
+      {winner && (
+        <h1
+          style={{
+            textAlign: "center",
+            color: winner === "tiger" ? "orange" : "lime",
+          }}
+        >
+          {winner === "tiger" ? "🐅 Tigers Win!" : "🐐 Goats Win!"}
+        </h1>
+      )}
 
       <h3 style={{ textAlign: "center" }}>Goats Placed: {goatsPlaced}/15</h3>
 
