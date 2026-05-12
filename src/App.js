@@ -218,6 +218,10 @@ function App() {
 
       if (!moved) {
         alert("❌ Invalid move!");
+
+        // allow selecting another goat
+        setSelected(null);
+
         return;
       }
 
@@ -229,109 +233,194 @@ function App() {
   return (
     <div
       style={{
-        background: "#111",
-        color: "white",
         minHeight: "100vh",
-        padding: "20px",
+        width: "100vw",
+        background: "#050505",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        overflow: "hidden",
+        fontFamily: "Arial, sans-serif",
       }}
     >
-      <h1 style={{ textAlign: "center" }}>Aadu Puli Attam</h1>
-      <h2 style={{ textAlign: "center" }}>Turn: {turn}</h2>
-      {winner && (
-        <h1
-          style={{
-            textAlign: "center",
-            color: winner === "tiger" ? "orange" : "lime",
-          }}
-        >
-          {winner === "tiger" ? "🐅 Tigers Win!" : "🐐 Goats Win!"}
-        </h1>
-      )}
-
-      <h3 style={{ textAlign: "center" }}>Goats Placed: {goatsPlaced}/15</h3>
-
-      <h3 style={{ textAlign: "center" }}>
-        Goats Remaining: {15 - goatsPlaced}
-      </h3>
-
-      <h3 style={{ textAlign: "center", color: "red" }}>
-        Goats Killed: {goatsKilled}
-      </h3>
-
       <div
         style={{
           width: "100%",
-          overflowX: "auto",
+          maxWidth: "1400px",
+          height: "100vh",
           display: "flex",
+          flexDirection: "row",
           justifyContent: "center",
+          alignItems: "center",
+          gap: "40px",
+          padding: "20px",
+          boxSizing: "border-box",
         }}
       >
-        <svg
-          width="900"
-          height="650"
-          viewBox="0 0 900 650"
-          style={{ minWidth: "900px" }}
+        {/* INFO PANEL */}
+        <div
+          style={{
+            width: "280px",
+            background:
+              "linear-gradient(145deg, rgba(20,20,20,0.95), rgba(10,10,10,0.92))",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: "20px",
+            padding: "24px",
+            color: "white",
+            backdropFilter: "blur(10px)",
+            boxShadow:
+              "0 0 40px rgba(0,0,0,0.7), 0 0 12px rgba(255,255,255,0.05)",
+          }}
         >
-          {/* LINES */}
-          {Object.entries(connections).map(([from, toList]) =>
-            toList.map((to) => {
-              if (from < to) {
-                const p1 = points[from];
-                const p2 = points[to];
-                return (
-                  <line
-                    key={`${from}-${to}`}
-                    x1={p1.x}
-                    y1={p1.y}
-                    x2={p2.x}
-                    y2={p2.y}
-                    stroke="white"
-                    strokeWidth="3"
-                  />
-                );
-              }
-              return null;
-            }),
+          <h1
+            style={{
+              textAlign: "center",
+              marginBottom: "20px",
+              color: "white",
+            }}
+          >
+            Aadu Puli Attam
+          </h1>
+
+          <h2
+            style={{
+              textAlign: "center",
+              color: "#ddd",
+            }}
+          >
+            Turn: {turn}
+          </h2>
+
+          {winner && (
+            <h1
+              style={{
+                textAlign: "center",
+                color: winner === "tiger" ? "orange" : "lime",
+              }}
+            >
+              {winner === "tiger" ? "🐅 Tigers Win!" : "🐐 Goats Win!"}
+            </h1>
           )}
 
-          {/* POINTS */}
-          {points.map((p) => (
-            <circle
-              key={p.id}
-              cx={p.x}
-              cy={p.y}
-              r="25"
-              fill={
-                selected === p.id
-                  ? "yellow"
-                  : pieces[p.id] === "tiger"
-                    ? "#555"
-                    : "#bbb"
-              }
-              onClick={() => handleClick(p.id)}
-            />
-          ))}
+          <h3
+            style={{
+              color: "white",
+              fontWeight: "500",
+              marginBottom: "14px",
+            }}
+          >
+            Goats Placed: {goatsPlaced}/15
+          </h3>
 
-          {/* PIECES */}
-          {Object.entries(pieces).map(([pos, type]) => {
-            const point = points[pos];
-            return (
+          <h3
+            style={{
+              color: "white",
+              fontWeight: "500",
+              marginBottom: "14px",
+            }}
+          >
+            Goats Remaining: {15 - goatsPlaced}
+          </h3>
+
+          <h3
+            style={{
+              color: "white",
+              fontWeight: "500",
+              marginBottom: "14px",
+            }}
+          >
+            Goats Killed: {goatsKilled}
+          </h3>
+        </div>
+
+        {/* BOARD */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <svg
+            viewBox="0 0 900 650"
+            style={{
+              width: "min(75vw, 850px)",
+              height: "auto",
+              maxHeight: "90vh",
+              filter: "drop-shadow(0 0 18px rgba(255,255,255,0.12))",
+            }}
+          >
+            {/* LINES */}
+            {Object.entries(connections).map(([from, toList]) =>
+              toList.map((to) => {
+                if (from < to) {
+                  const p1 = points[from];
+                  const p2 = points[to];
+
+                  return (
+                    <line
+                      key={`${from}-${to}`}
+                      x1={p1.x}
+                      y1={p1.y}
+                      x2={p2.x}
+                      y2={p2.y}
+                      stroke="rgba(255,255,255,0.55)"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                    />
+                  );
+                }
+
+                return null;
+              }),
+            )}
+
+            {/* POINTS */}
+            {points.map((p) => (
               <circle
-                key={pos}
-                cx={point.x}
-                cy={point.y}
-                r="22"
-                fill={type === "tiger" ? "orange" : "lime"}
-                stroke="black"
-                strokeWidth="2"
-                onClick={() => handleClick(Number(pos))}
+                key={p.id}
+                cx={p.x}
+                cy={p.y}
+                r="20"
+                fill={
+                  selected === p.id
+                    ? "#ffd60a"
+                    : pieces[p.id] === "tiger"
+                      ? "#2d2d2d"
+                      : "#1a1a1a"
+                }
+                style={{
+                  filter:
+                    selected === p.id
+                      ? "drop-shadow(0 0 12px rgba(255,214,10,0.9))"
+                      : "none",
+                }}
+                onClick={() => handleClick(p.id)}
               />
-            );
-          })}
-        </svg>
+            ))}
+
+            {/* PIECES */}
+            {Object.entries(pieces).map(([pos, type]) => {
+              const point = points[pos];
+
+              return (
+                <circle
+                  key={pos}
+                  cx={point.x}
+                  cy={point.y}
+                  r="18"
+                  fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
+                  stroke="#ffffffaa"
+                  strokeWidth="3"
+                  onClick={() => handleClick(Number(pos))}
+                />
+              );
+            })}
+          </svg>
+        </div>
       </div>
     </div>
   );
 }
-
 export default App;
