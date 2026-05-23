@@ -3,9 +3,9 @@ import { points, connections } from "./data/board";
 import { GiTigerHead, GiGoat } from "react-icons/gi";
 import { Howl } from "howler";
 import clickSound from "./sounds/click.wav";
-import moveSound from "./sounds/move.mp3";
 import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
+import warningSound from "./sounds/error.mp3";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -20,26 +20,26 @@ function App() {
   const [goatsPlaced, setGoatsPlaced] = useState(0);
   const [goatsKilled, setGoatsKilled] = useState(0);
   const [winner, setWinner] = useState(null);
+  const [message, setMessage] = useState("");
 
   const clickAudio = new Howl({
-  src: [clickSound],
-  volume: 0.4,
-});
+    src: [clickSound],
+    volume: 0.4,
+  });
 
-const moveAudio = new Howl({
-  src: [moveSound],
-  volume: 0.5,
-});
+  const captureAudio = new Howl({
+    src: [captureSound],
+    volume: 0.7,
+  });
 
-const captureAudio = new Howl({
-  src: [captureSound],
-  volume: 0.7,
-});
-
-const winAudio = new Howl({
-  src: [winSound],
-  volume: 0.8,
-});
+  const winAudio = new Howl({
+    src: [winSound],
+    volume: 0.8,
+  });
+  const errorAudio = new Howl({
+    src: [warningSound],
+    volume: 0.5,
+  });
 
   console.log("TURN:", turn, "SELECTED:", selected);
 
@@ -142,7 +142,8 @@ const winAudio = new Howl({
             setWinner("goat");
 
             setTimeout(() => {
-              alert("🐐 Goats Win!");
+              winAudio.play();
+              showMessage("🐐 Goats Win!");
             }, 100);
           }
 
@@ -154,10 +155,8 @@ const winAudio = new Howl({
 
           if (updated >= 5) {
             setWinner("tiger");
-
-            setTimeout(() => {
-              alert("🐅 Tigers Win!");
-            }, 100);
+            winAudio.play();
+            showMessage("🐅 Tigers Win!");
           }
 
           return updated;
@@ -179,7 +178,8 @@ const winAudio = new Howl({
           setWinner("goat");
 
           setTimeout(() => {
-            alert("🐐 Goats Win!");
+            winAudio.play();
+            showMessage("🐐 Goats Win!");
           }, 100);
         }
 
@@ -189,6 +189,13 @@ const winAudio = new Howl({
       return true;
     }
     return false;
+  }
+  function showMessage(text) {
+    setMessage(text);
+
+    setTimeout(() => {
+      setMessage("");
+    }, 1500);
   }
 
   // 🔥 CLICK HANDLER (FIXED CLEANLY)
@@ -226,7 +233,8 @@ const winAudio = new Howl({
       const moved = movePiece(selected, id);
 
       if (!moved) {
-        alert("❌ Invalid move! Try again.");
+        errorAudio.play();
+        showMessage("Illegal Move");
         return;
       }
 
@@ -236,22 +244,22 @@ const winAudio = new Howl({
     }
     // 🐐 PHASE 2: GOAT MOVEMENT
     if (turn === "goat" && goatsPlaced >= 15) {
-     if (piece === "goat") {
-  setSelected(id);
-  return;
-}
+      if (piece === "goat") {
+        setSelected(id);
+        return;
+      }
 
-if (selected === null) {
-  return;
-}
+      if (selected === null) {
+        return;
+      }
 
       const moved = movePiece(selected, id);
 
       if (!moved) {
-        alert("❌ Invalid move!");
+        errorAudio.play();
+        showMessage("Illegal Move");
 
         // allow selecting another goat
-        
 
         return;
       }
@@ -308,6 +316,8 @@ if (selected === null) {
               textAlign: "center",
               marginBottom: "20px",
               color: "white",
+              letterSpacing: "1px",
+              textShadow: "0 0 12px rgba(255,255,255,0.15)",
             }}
           >
             Aadu Puli Aattam
@@ -321,6 +331,25 @@ if (selected === null) {
           >
             Turn: {turn}
           </h2>
+          {message && (
+            <div
+              style={{
+                marginBottom: "16px",
+                padding: "10px 22px",
+                background: "rgba(255, 80, 80, 0.12)",
+                border: "1px solid rgba(255,80,80,0.45)",
+                borderRadius: "14px",
+                color: "#ff9090",
+                fontWeight: "bold",
+                letterSpacing: "0.5px",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 0 18px rgba(255,80,80,0.18)",
+                animation: "fadeIn 0.2s ease",
+              }}
+            >
+              {message}
+            </div>
+          )}
 
           {winner && (
             <h1
@@ -337,7 +366,7 @@ if (selected === null) {
             style={{
               color: "white",
               fontWeight: "500",
-              marginBottom: "14px",
+              marginBottom: "18px",
             }}
           >
             Goats Placed: {goatsPlaced}/15
@@ -347,7 +376,7 @@ if (selected === null) {
             style={{
               color: "white",
               fontWeight: "500",
-              marginBottom: "14px",
+              marginBottom: "18px",
             }}
           >
             Goats Remaining: {15 - goatsPlaced}
@@ -357,7 +386,7 @@ if (selected === null) {
             style={{
               color: "white",
               fontWeight: "500",
-              marginBottom: "14px",
+              marginBottom: "18px",
             }}
           >
             Goats Killed: {goatsKilled}
@@ -433,61 +462,58 @@ if (selected === null) {
 
             {/* PIECES */}
             {Object.entries(pieces).map(([pos, type]) => {
-  const point = points[pos];
+              const point = points[pos];
 
-  return (
-    <g
-      key={pos}
-      onClick={() => handleClick(Number(pos))}
-    >
-      <circle
-        cx={point.x}
-        cy={point.y}
-        r="18"
-        fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
-        stroke="#ffffffaa"
-        strokeWidth="3"
-        style={{
-          transition: "all 0.25s ease",
-          filter:
-            selected === Number(pos)
-              ? type === "tiger"
-                ? "drop-shadow(0 0 22px rgba(255,140,0,1))"
-                : "drop-shadow(0 0 18px rgba(46,230,166,1))"
-              : type === "tiger"
-                ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
-                : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
-        }}
-      />
+              return (
+                <g key={pos} onClick={() => handleClick(Number(pos))}>
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r="24"
+                    fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
+                    stroke="#ffffffaa"
+                    strokeWidth="4"
+                    style={{
+                      transition: "all 0.25s ease",
+                      filter:
+                        selected === Number(pos)
+                          ? type === "tiger"
+                            ? "drop-shadow(0 0 22px rgba(255,140,0,1))"
+                            : "drop-shadow(0 0 18px rgba(46,230,166,1))"
+                          : type === "tiger"
+                            ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
+                            : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
+                    }}
+                  />
 
-      <foreignObject
-        x={point.x - 14}
-        y={point.y - 14}
-        width="28"
-        height="28"
-        pointerEvents="none"
-      >
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            color: type === "tiger" ? "#111" : "#0b0b0b",
-            fontSize: "20px",
-            animation:
-              type === "tiger"
-                ? "tigerPulse 2s infinite"
-                : "goatPulse 2s infinite",
-          }}
-        >
-          {type === "tiger" ? <GiTigerHead /> : <GiGoat />}
-        </div>
-      </foreignObject>
-    </g>
-  );
-})}
+                  <foreignObject
+                    x={point.x - 14}
+                    y={point.y - 14}
+                    width="28"
+                    height="28"
+                    pointerEvents="none"
+                  >
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        color: type === "tiger" ? "#111" : "#0b0b0b",
+                        fontSize: "20px",
+                        animation:
+                          type === "tiger"
+                            ? "tigerPulse 2s infinite"
+                            : "goatPulse 2s infinite",
+                      }}
+                    >
+                      {type === "tiger" ? <GiTigerHead /> : <GiGoat />}
+                    </div>
+                  </foreignObject>
+                </g>
+              );
+            })}
           </svg>
         </div>
       </div>
