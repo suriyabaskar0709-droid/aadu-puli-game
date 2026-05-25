@@ -14,7 +14,6 @@ function App() {
   });
 
   const [selected, setSelected] = useState(null);
-  const [hoveredPiece, setHoveredPiece] = useState(null);
 
   const [turn, setTurn] = useState("goat");
   const [goatsPlaced, setGoatsPlaced] = useState(0);
@@ -54,8 +53,6 @@ function App() {
       if (connections[from].includes(to)) continue;
 
       // 🔥 KEY: check straight-line (no bend)
-      const fromNeighbors = connections[from] || [];
-      const midNeighbors = connections[mid] || [];
 
       // find common nodes between from & to
       const common = (connections[from] || []).filter((n) =>
