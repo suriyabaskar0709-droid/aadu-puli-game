@@ -36,3 +36,256 @@
     transform: rotate(360deg);
   }
 }
+/* ===== MAIN RESPONSIVE LAYOUT ===== */
+
+.game-layout {
+  width: 100%;
+  min-height: 100vh;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  overflow: hidden;
+
+  box-sizing: border-box;
+}
+
+/* .game-sidebar {
+  transition: all 0.3s ease;
+}
+
+.game-board-container {
+  transition: all 0.3s ease;
+} */
+
+.game-main-container {
+  width: 100%;
+  max-width: 1400px;
+
+  display: flex;
+  flex-direction: row;
+
+  justify-content: center;
+  align-items: center;
+
+  gap: 18px;
+  padding: 20px;
+
+  box-sizing: border-box;
+  
+}
+.game-sidebar {
+  width: 220px;
+  padding: 24px;
+  border-radius: 20px;
+  min-height: 320px;
+
+  transition: all 0.3s ease;
+}
+
+.game-board-container {
+  flex: 1;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.game-board-container svg {
+   width: min(78vw, 920px);
+   max-height: 82vh;
+
+  height: auto;
+
+  display: block;
+}
+/* ===== TABLET + MOBILE ===== */
+
+@media (max-width: 900px) {
+   .game-layout {
+    overflow-y: auto;
+    align-items: flex-start;
+  }
+
+  .game-main-container {
+    flex-direction: column;
+
+    gap: 18px;
+
+    padding: 16px;
+  }
+
+  .game-sidebar {
+    width: 92%;
+    max-width: 420px;
+
+    padding: 16px;
+  }
+
+  .game-board-container {
+    width: 100%;
+  }
+
+  .game-board-container svg {
+   width: 102vw;
+max-width: 920px;
+  }
+}
+
+
+/* ===== SMALL MOBILE ===== */
+
+/* @media (max-width: 600px) {
+  .game-layout > div {
+    gap: 10px !important;
+    padding: 8px !important;
+  }
+
+  .game-sidebar {
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .game-sidebar h1 {
+    font-size: 1.7rem !important;
+  }
+
+  .game-sidebar h2 {
+    font-size: 1.2rem !important;
+  }
+
+  .game-sidebar h3 {
+    font-size: 1rem !important;
+  }
+
+  .game-board-container svg {
+    width: 98vw !important;
+  }
+} */
+ .restart-button {
+  margin-top: 20px;
+
+  width: 100%;
+
+  padding: 14px 18px;
+
+  border: none;
+  border-radius: 14px;
+
+  background: linear-gradient(
+    135deg,
+    #ff9800,
+    #ff5722
+  );
+
+  color: white;
+
+  font-size: 1rem;
+  font-weight: bold;
+
+  cursor: pointer;
+
+  transition: all 0.25s ease;
+
+  box-shadow:
+    0 0 12px rgba(255, 140, 0, 0.45);
+}
+
+.restart-button:hover {
+  transform: scale(1.03);
+
+  box-shadow:
+    0 0 20px rgba(255, 140, 0, 0.7);
+}
+
+.restart-button:active {
+  transform: scale(0.98);
+}
+.tutorial-overlay {
+  position: fixed;
+
+  inset: 0;
+
+  background: rgba(0, 0, 0, 0.82);
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  z-index: 9999;
+
+  padding: 20px;
+
+  box-sizing: border-box;
+}
+
+.tutorial-card {
+  width: 100%;
+  max-width: 420px;
+
+  background: linear-gradient(
+    145deg,
+    #121212,
+    #1c1c1c
+  );
+
+  border: 2px solid rgba(255, 140, 0, 0.35);
+
+  border-radius: 24px;
+
+  padding: 32px 26px;
+
+  text-align: center;
+
+  box-shadow:
+    0 0 30px rgba(255, 140, 0, 0.25);
+
+  color: white;
+}
+
+.tutorial-card h1 {
+  margin-bottom: 18px;
+
+  font-size: 2rem;
+
+  color: #ff9800;
+}
+
+.tutorial-card p {
+  font-size: 1.1rem;
+
+  line-height: 1.7;
+
+  color: #dddddd;
+
+  margin-bottom: 28px;
+}
+
+.tutorial-button {
+  width: 100%;
+
+  padding: 14px;
+
+  border: none;
+  border-radius: 14px;
+
+  background: linear-gradient(
+    135deg,
+    #ff9800,
+    #ff5722
+  );
+
+  color: white;
+
+  font-size: 1rem;
+  font-weight: bold;
+
+  cursor: pointer;
+
+  transition: all 0.25s ease;
+}
+
+.tutorial-button:hover {
+  transform: scale(1.03);
+}

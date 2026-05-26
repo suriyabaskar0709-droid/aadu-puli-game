@@ -6,6 +6,7 @@ import clickSound from "./sounds/click.wav";
 import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
 import warningSound from "./sounds/error.mp3";
+import "./App.css";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -14,6 +15,37 @@ function App() {
   });
 
   const [selected, setSelected] = useState(null);
+  const [showTutorial, setShowTutorial] = useState(
+    !localStorage.getItem("tutorialSeen"),
+  );
+
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const tutorialCards = [
+    {
+      title: "Welcome",
+      text: "Aadu Puli Aattam is a traditional Tamil strategy game between Tigers and Goats.",
+    },
+
+    {
+      title: "🐐 Goat Objective",
+      text: "Goats must surround and trap all Tigers so they cannot move.",
+    },
+
+    {
+      title: "🐅 Tiger Objective",
+      text: "Tigers win by capturing 5 goats before the goats trap them.",
+    },
+
+    {
+      title: "⚔ Capturing",
+      text: "A Tiger captures a Goat by jumping over it into an empty connected node.",
+    },
+
+    {
+      title: "Ready?",
+      text: "Plan carefully. Every move matters.",
+    },
+  ];
 
   const [turn, setTurn] = useState("goat");
   const [goatsPlaced, setGoatsPlaced] = useState(0);
@@ -41,6 +73,17 @@ function App() {
   });
 
   console.log("TURN:", turn, "SELECTED:", selected);
+  const restartGame = () => {
+    window.location.reload();
+  };
+  const nextTutorial = () => {
+    if (tutorialStep < tutorialCards.length - 1) {
+      setTutorialStep(tutorialStep + 1);
+    } else {
+      localStorage.setItem("tutorialSeen", "true");
+      setShowTutorial(false);
+    }
+  };
 
   // 🔥 CAPTURE LOGIC (FINAL)
   function findCapture(from, to) {
@@ -140,7 +183,7 @@ function App() {
 
             setTimeout(() => {
               winAudio.play();
-              showMessage("🐐 Goats Win!");
+              // showMessage("🐐 Goats Win!");
             }, 100);
           }
 
@@ -153,7 +196,7 @@ function App() {
           if (updated >= 5) {
             setWinner("tiger");
             winAudio.play();
-            showMessage("🐅 Tigers Win!");
+            // showMessage("🐅 Tigers Win!");
           }
 
           return updated;
@@ -176,7 +219,7 @@ function App() {
 
           setTimeout(() => {
             winAudio.play();
-            showMessage("🐐 Goats Win!");
+            // showMessage("🐐 Goats Win!");
           }, 100);
         }
 
@@ -268,9 +311,10 @@ function App() {
 
   return (
     <div
+      className="game-layout"
       style={{
         minHeight: "100vh",
-        width: "100vw",
+        width: "100%",
         background: "#050505",
         display: "flex",
         justifyContent: "center",
@@ -279,29 +323,33 @@ function App() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1400px",
-          height: "100vh",
-          display: "flex",
-          flexDirection: "row",
-          justifyContent: "center",
-          alignItems: "center",
-          gap: "40px",
-          padding: "20px",
-          boxSizing: "border-box",
-        }}
-      >
+      {showTutorial && (
+        <div className="tutorial-overlay">
+          <div className="tutorial-card">
+            <h1>{tutorialCards[tutorialStep].title}</h1>
+
+            <p>{tutorialCards[tutorialStep].text}</p>
+
+            <button className="tutorial-button" onClick={nextTutorial}>
+              {tutorialStep === tutorialCards.length - 1
+                ? "Start Game"
+                : "Next"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="game-main-container">
         {/* INFO PANEL */}
         <div
+          className="game-sidebar"
           style={{
-            width: "280px",
+            // width: "280px",
             background:
               "linear-gradient(145deg, rgba(20,20,20,0.95), rgba(10,10,10,0.92))",
             border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: "20px",
-            padding: "24px",
+            // borderRadius: "20px",
+            // padding: "24px",
             color: "white",
             backdropFilter: "blur(10px)",
             boxShadow:
@@ -319,15 +367,16 @@ function App() {
           >
             Aadu Puli Aattam
           </h1>
-
-          <h2
-            style={{
-              textAlign: "center",
-              color: "#ddd",
-            }}
-          >
-            Turn: {turn}
-          </h2>
+          {!winner && (
+            <h2
+              style={{
+                textAlign: "center",
+                color: "#ddd",
+              }}
+            >
+              Turn: {turn}
+            </h2>
+          )}
           {message && (
             <div
               style={{
@@ -388,23 +437,29 @@ function App() {
           >
             Goats Killed: {goatsKilled}
           </h3>
+          {winner && (
+            <button onClick={restartGame} className="restart-button">
+              Restart Game
+            </button>
+          )}
         </div>
 
         {/* BOARD */}
         <div
+          className="game-board-container"
           style={{
-            flex: 1,
+            // flex: 1,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
           }}
         >
           <svg
-            viewBox="0 0 900 650"
+            viewBox="0 0 900 850"
             style={{
-              width: "min(75vw, 850px)",
+              // width: "min(75vw, 850px)",
               height: "auto",
-              maxHeight: "90vh",
+              // maxHeight: "90vh",
               filter: "drop-shadow(0 0 18px rgba(255,255,255,0.12))",
             }}
           >
