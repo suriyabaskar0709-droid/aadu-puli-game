@@ -7,6 +7,7 @@ import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
 import warningSound from "./sounds/error.mp3";
 import "./App.css";
+
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -84,7 +85,7 @@ function App() {
       setShowTutorial(false);
     }
   };
-
+  const [screen, setScreen] = useState("home");
   // 🔥 CAPTURE LOGIC (FINAL)
   function findCapture(from, to) {
     for (let mid of connections[from] || []) {
@@ -179,6 +180,7 @@ function App() {
 
           // 🐐 GOAT WIN CHECK
           if (checkGoatWin(newState)) {
+            winAudio.play();
             setWinner("goat");
 
             setTimeout(() => {
@@ -237,6 +239,19 @@ function App() {
       setMessage("");
     }, 1500);
   }
+  function allTigersBlocked(currentPieces) {
+    const tigerPositions = Object.keys(currentPieces).filter(
+      (key) => currentPieces[key] === "tiger",
+    );
+
+    for (let tigerId of tigerPositions) {
+      if (tigerCanMove(Number(tigerId), currentPieces)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 
   // 🔥 CLICK HANDLER (FIXED CLEANLY)
   function handleClick(id) {
@@ -252,7 +267,17 @@ function App() {
           [id]: "goat",
         }));
         setGoatsPlaced((prev) => prev + 1);
-        setTurn("tiger");
+        const updatedPieces = {
+          ...pieces,
+          [id]: "goat",
+        };
+
+        if (allTigersBlocked(updatedPieces)) {
+          winAudio.play();
+          setWinner("goat");
+        } else {
+          setTurn("tiger");
+        }
       }
       return;
     }
@@ -261,6 +286,26 @@ function App() {
     if (turn === "tiger") {
       // 🔥 selecting tiger
       if (piece === "tiger") {
+        // ❌ trapped tiger cannot be selected
+        if (!tigerCanMove(id, pieces)) {
+          // check if ALL tigers trapped
+          const tigerPositions = Object.keys(pieces).filter(
+            (key) => pieces[key] === "tiger",
+          );
+
+          const anyTigerCanMove = tigerPositions.some((tigerId) =>
+            tigerCanMove(Number(tigerId), pieces),
+          );
+
+          // 🐐 goats win
+          if (!anyTigerCanMove) {
+            winAudio.play();
+            setWinner("goat");
+          }
+
+          return;
+        }
+
         setSelected(id);
         return;
       }
@@ -305,7 +350,19 @@ function App() {
       }
 
       setSelected(null);
-      setTurn("tiger");
+
+      const updatedPieces = {
+        ...pieces,
+        [selected]: null,
+        [id]: "goat",
+      };
+
+      if (allTigersBlocked(updatedPieces)) {
+        winAudio.play();
+        setWinner("goat");
+      } else {
+        setTurn("tiger");
+      }
     }
   }
 
@@ -323,6 +380,40 @@ function App() {
         fontFamily: "Arial, sans-serif",
       }}
     >
+      {screen === "home" && (
+        <div className="home-screen">
+          <div className="background-glow glow-1"></div>
+          <div className="background-glow glow-2"></div>
+          <div className="background-glow glow-3"></div>
+          <div className="home-content">
+            <h1 className="game-title">AADU PULI AATTAM</h1>
+
+            <p className="game-tagline">Ancient Tamil Strategy Reimagined</p>
+
+            <button
+              className="home-button primary"
+              onClick={() => setScreen("game")}
+            >
+              Play Local
+            </button>
+
+            <button className="home-button secondary">
+              Online Multiplayer
+              <span>Coming Soon</span>
+            </button>
+
+            <button
+              className="home-button secondary"
+              onClick={() => {
+                setScreen("game");
+                setShowTutorial(true);
+              }}
+            >
+              Tutorial
+            </button>
+          </div>
+        </div>
+      )}
       {showTutorial && (
         <div className="tutorial-overlay">
           <div className="tutorial-card">
@@ -338,237 +429,238 @@ function App() {
           </div>
         </div>
       )}
-
-      <div className="game-main-container">
-        {/* INFO PANEL */}
-        <div
-          className="game-sidebar"
-          style={{
-            // width: "280px",
-            background:
-              "linear-gradient(145deg, rgba(20,20,20,0.95), rgba(10,10,10,0.92))",
-            border: "1px solid rgba(255,255,255,0.12)",
-            // borderRadius: "20px",
-            // padding: "24px",
-            color: "white",
-            backdropFilter: "blur(10px)",
-            boxShadow:
-              "0 0 40px rgba(0,0,0,0.7), 0 0 12px rgba(255,255,255,0.05)",
-          }}
-        >
-          <h1
+      {screen === "game" && (
+        <div className="game-main-container">
+          {/* INFO PANEL */}
+          <div
+            className="game-sidebar"
             style={{
-              textAlign: "center",
-              marginBottom: "20px",
+              // width: "280px",
+              background:
+                "linear-gradient(145deg, rgba(20,20,20,0.95), rgba(10,10,10,0.92))",
+              border: "1px solid rgba(255,255,255,0.12)",
+              // borderRadius: "20px",
+              // padding: "24px",
               color: "white",
-              letterSpacing: "1px",
-              textShadow: "0 0 12px rgba(255,255,255,0.15)",
+              backdropFilter: "blur(10px)",
+              boxShadow:
+                "0 0 40px rgba(0,0,0,0.7), 0 0 12px rgba(255,255,255,0.05)",
             }}
           >
-            Aadu Puli Aattam
-          </h1>
-          {!winner && (
-            <h2
-              style={{
-                textAlign: "center",
-                color: "#ddd",
-              }}
-            >
-              Turn: {turn}
-            </h2>
-          )}
-          {message && (
-            <div
-              style={{
-                marginBottom: "16px",
-                padding: "10px 22px",
-                background: "rgba(255, 80, 80, 0.12)",
-                border: "1px solid rgba(255,80,80,0.45)",
-                borderRadius: "14px",
-                color: "#ff9090",
-                fontWeight: "bold",
-                letterSpacing: "0.5px",
-                backdropFilter: "blur(8px)",
-                boxShadow: "0 0 18px rgba(255,80,80,0.18)",
-                animation: "fadeIn 0.2s ease",
-              }}
-            >
-              {message}
-            </div>
-          )}
-
-          {winner && (
             <h1
               style={{
                 textAlign: "center",
-                color: winner === "tiger" ? "orange" : "lime",
+                marginBottom: "20px",
+                color: "white",
+                letterSpacing: "1px",
+                textShadow: "0 0 12px rgba(255,255,255,0.15)",
               }}
             >
-              {winner === "tiger" ? "🐅 Tigers Win!" : "🐐 Goats Win!"}
+              Aadu Puli Aattam
             </h1>
-          )}
-
-          <h3
-            style={{
-              color: "white",
-              fontWeight: "500",
-              marginBottom: "18px",
-            }}
-          >
-            Goats Placed: {goatsPlaced}/15
-          </h3>
-
-          <h3
-            style={{
-              color: "white",
-              fontWeight: "500",
-              marginBottom: "18px",
-            }}
-          >
-            Goats Remaining: {15 - goatsPlaced}
-          </h3>
-
-          <h3
-            style={{
-              color: "white",
-              fontWeight: "500",
-              marginBottom: "18px",
-            }}
-          >
-            Goats Killed: {goatsKilled}
-          </h3>
-          {winner && (
-            <button onClick={restartGame} className="restart-button">
-              Restart Game
-            </button>
-          )}
-        </div>
-
-        {/* BOARD */}
-        <div
-          className="game-board-container"
-          style={{
-            // flex: 1,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <svg
-            viewBox="0 0 900 850"
-            style={{
-              // width: "min(75vw, 850px)",
-              height: "auto",
-              // maxHeight: "90vh",
-              filter: "drop-shadow(0 0 18px rgba(255,255,255,0.12))",
-            }}
-          >
-            {/* LINES */}
-            {Object.entries(connections).map(([from, toList]) =>
-              toList.map((to) => {
-                if (from < to) {
-                  const p1 = points[from];
-                  const p2 = points[to];
-
-                  return (
-                    <line
-                      key={`${from}-${to}`}
-                      x1={p1.x}
-                      y1={p1.y}
-                      x2={p2.x}
-                      y2={p2.y}
-                      stroke="rgba(255,255,255,0.55)"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                    />
-                  );
-                }
-
-                return null;
-              }),
+            {!winner && (
+              <h2
+                style={{
+                  textAlign: "center",
+                  color: "#ddd",
+                }}
+              >
+                Turn: {turn}
+              </h2>
+            )}
+            {message && (
+              <div
+                style={{
+                  marginBottom: "16px",
+                  padding: "10px 22px",
+                  background: "rgba(255, 80, 80, 0.12)",
+                  border: "1px solid rgba(255,80,80,0.45)",
+                  borderRadius: "14px",
+                  color: "#ff9090",
+                  fontWeight: "bold",
+                  letterSpacing: "0.5px",
+                  backdropFilter: "blur(8px)",
+                  boxShadow: "0 0 18px rgba(255,80,80,0.18)",
+                  animation: "fadeIn 0.2s ease",
+                }}
+              >
+                {message}
+              </div>
             )}
 
-            {/* POINTS */}
-            {points.map((p) => (
-              <circle
-                key={p.id}
-                cx={p.x}
-                cy={p.y}
-                r="20"
-                fill={
-                  selected === p.id
-                    ? "#ffd60a"
-                    : pieces[p.id] === "tiger"
-                      ? "#2d2d2d"
-                      : "#1a1a1a"
-                }
+            {winner && (
+              <h1
                 style={{
-                  filter:
-                    selected === p.id
-                      ? "drop-shadow(0 0 12px rgba(255,214,10,0.9))"
-                      : "none",
+                  textAlign: "center",
+                  color: winner === "tiger" ? "orange" : "lime",
                 }}
-                onClick={() => handleClick(p.id)}
-              />
-            ))}
+              >
+                {winner === "tiger" ? "🐅 Tigers Win!" : "🐐 Goats Win!"}
+              </h1>
+            )}
 
-            {/* PIECES */}
-            {Object.entries(pieces).map(([pos, type]) => {
-              const point = points[pos];
+            <h3
+              style={{
+                color: "white",
+                fontWeight: "500",
+                marginBottom: "18px",
+              }}
+            >
+              Goats Placed: {goatsPlaced}/15
+            </h3>
 
-              return (
-                <g key={pos} onClick={() => handleClick(Number(pos))}>
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r="24"
-                    fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
-                    stroke="#ffffffaa"
-                    strokeWidth="4"
-                    style={{
-                      transition: "all 0.25s ease",
-                      filter:
-                        selected === Number(pos)
-                          ? type === "tiger"
-                            ? "drop-shadow(0 0 22px rgba(255,140,0,1))"
-                            : "drop-shadow(0 0 18px rgba(46,230,166,1))"
-                          : type === "tiger"
-                            ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
-                            : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
-                    }}
-                  />
+            <h3
+              style={{
+                color: "white",
+                fontWeight: "500",
+                marginBottom: "18px",
+              }}
+            >
+              Goats Remaining: {15 - goatsPlaced}
+            </h3>
 
-                  <foreignObject
-                    x={point.x - 14}
-                    y={point.y - 14}
-                    width="28"
-                    height="28"
-                    pointerEvents="none"
-                  >
-                    <div
+            <h3
+              style={{
+                color: "white",
+                fontWeight: "500",
+                marginBottom: "18px",
+              }}
+            >
+              Goats Killed: {goatsKilled}
+            </h3>
+            {winner && (
+              <button onClick={restartGame} className="restart-button">
+                Restart Game
+              </button>
+            )}
+          </div>
+
+          {/* BOARD */}
+          <div
+            className="game-board-container"
+            style={{
+              // flex: 1,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <svg
+              viewBox="0 0 900 850"
+              style={{
+                // width: "min(75vw, 850px)",
+                height: "auto",
+                // maxHeight: "90vh",
+                filter: "drop-shadow(0 0 18px rgba(255,255,255,0.12))",
+              }}
+            >
+              {/* LINES */}
+              {Object.entries(connections).map(([from, toList]) =>
+                toList.map((to) => {
+                  if (from < to) {
+                    const p1 = points[from];
+                    const p2 = points[to];
+
+                    return (
+                      <line
+                        key={`${from}-${to}`}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke="rgba(255,255,255,0.55)"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                      />
+                    );
+                  }
+
+                  return null;
+                }),
+              )}
+
+              {/* POINTS */}
+              {points.map((p) => (
+                <circle
+                  key={p.id}
+                  cx={p.x}
+                  cy={p.y}
+                  r="20"
+                  fill={
+                    selected === p.id
+                      ? "#ffd60a"
+                      : pieces[p.id] === "tiger"
+                        ? "#2d2d2d"
+                        : "#1a1a1a"
+                  }
+                  style={{
+                    filter:
+                      selected === p.id
+                        ? "drop-shadow(0 0 12px rgba(255,214,10,0.9))"
+                        : "none",
+                  }}
+                  onClick={() => handleClick(p.id)}
+                />
+              ))}
+
+              {/* PIECES */}
+              {Object.entries(pieces).map(([pos, type]) => {
+                const point = points[pos];
+
+                return (
+                  <g key={pos} onClick={() => handleClick(Number(pos))}>
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r="24"
+                      fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
+                      stroke="#ffffffaa"
+                      strokeWidth="4"
                       style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "flex",
-                        justifyContent: "center",
-                        alignItems: "center",
-                        color: type === "tiger" ? "#111" : "#0b0b0b",
-                        fontSize: "20px",
-                        animation:
-                          type === "tiger"
-                            ? "tigerPulse 2s infinite"
-                            : "goatPulse 2s infinite",
+                        transition: "all 0.25s ease",
+                        filter:
+                          selected === Number(pos)
+                            ? type === "tiger"
+                              ? "drop-shadow(0 0 22px rgba(255,140,0,1))"
+                              : "drop-shadow(0 0 18px rgba(46,230,166,1))"
+                            : type === "tiger"
+                              ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
+                              : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
                       }}
+                    />
+
+                    <foreignObject
+                      x={point.x - 14}
+                      y={point.y - 14}
+                      width="28"
+                      height="28"
+                      pointerEvents="none"
                     >
-                      {type === "tiger" ? <GiTigerHead /> : <GiGoat />}
-                    </div>
-                  </foreignObject>
-                </g>
-              );
-            })}
-          </svg>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          color: type === "tiger" ? "#111" : "#0b0b0b",
+                          fontSize: "20px",
+                          animation:
+                            type === "tiger"
+                              ? "tigerPulse 2s infinite"
+                              : "goatPulse 2s infinite",
+                        }}
+                      >
+                        {type === "tiger" ? <GiTigerHead /> : <GiGoat />}
+                      </div>
+                    </foreignObject>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
