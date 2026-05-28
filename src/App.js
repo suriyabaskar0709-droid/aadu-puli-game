@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useReducer } from "react";
 import { points, connections } from "./data/board";
 import { GiTigerHead, GiGoat } from "react-icons/gi";
 import { Howl } from "howler";
@@ -7,6 +7,7 @@ import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
 import warningSound from "./sounds/error.mp3";
 import "./App.css";
+import { gameReducer, initialGameState } from "./gameEngine/gameReducer";
 
 function App() {
   const [pieces, setPieces] = useState({
@@ -74,8 +75,34 @@ function App() {
   });
 
   console.log("TURN:", turn, "SELECTED:", selected);
+  const [, dispatch] = useReducer(gameReducer, initialGameState);
   const restartGame = () => {
-    window.location.reload();
+    dispatch({
+      type: "RESET_GAME",
+    });
+
+    setPieces({
+      0: "tiger",
+      3: "tiger",
+      4: "tiger",
+    });
+
+    dispatch({
+      type: "SET_TURN",
+      payload: "goat",
+    });
+
+    setTurn("goat");
+
+    setGoatsPlaced(0);
+
+    setGoatsKilled(0);
+
+    setSelected(null);
+
+    setWinner(null);
+
+    setShowTutorial(false);
   };
   const nextTutorial = () => {
     if (tutorialStep < tutorialCards.length - 1) {
@@ -86,6 +113,7 @@ function App() {
     }
   };
   const [screen, setScreen] = useState("home");
+
   // 🔥 CAPTURE LOGIC (FINAL)
   function findCapture(from, to) {
     for (let mid of connections[from] || []) {
@@ -188,7 +216,19 @@ function App() {
               // showMessage("🐐 Goats Win!");
             }, 100);
           }
+          dispatch({
+            type: "MOVE_PIECE",
 
+            payload: {
+              pieces: newState,
+
+              from,
+
+              to,
+
+              piece: pieceType,
+            },
+          });
           return newState;
         });
 
@@ -224,7 +264,19 @@ function App() {
             // showMessage("🐐 Goats Win!");
           }, 100);
         }
+        dispatch({
+          type: "MOVE_PIECE",
 
+          payload: {
+            pieces: newState,
+
+            from,
+
+            to,
+
+            piece: pieceType,
+          },
+        });
         return newState;
       });
 
@@ -276,6 +328,11 @@ function App() {
           winAudio.play();
           setWinner("goat");
         } else {
+          dispatch({
+            type: "SET_TURN",
+            payload: "tiger",
+          });
+
           setTurn("tiger");
         }
       }
@@ -324,6 +381,11 @@ function App() {
       }
 
       setSelected(null);
+      dispatch({
+        type: "SET_TURN",
+        payload: "goat",
+      });
+
       setTurn("goat");
       return;
     }
@@ -361,6 +423,11 @@ function App() {
         winAudio.play();
         setWinner("goat");
       } else {
+        dispatch({
+          type: "SET_TURN",
+          payload: "tiger",
+        });
+
         setTurn("tiger");
       }
     }
