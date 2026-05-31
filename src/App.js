@@ -7,8 +7,17 @@ import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
 import warningSound from "./sounds/error.mp3";
 import "./App.css";
-import { gameReducer, initialGameState } from "./gameEngine/gameReducer";
+import { gameReducer } from "./gameEngine/gameReducer";
 
+import { initialGameState } from "./gameEngine/initialGameState";
+import { resetGameAction, setTurnAction } from "./gameEngine/gameActions";
+// import { createGameSession } from "./multiplayer/gameSession";
+import {
+  setWinnerAction,
+  setGoatsKilledAction,
+  setGoatsPlacedAction,
+  movePieceAction,
+} from "./gameEngine/gameActions";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -76,22 +85,18 @@ function App() {
 
   console.log("TURN:", turn, "SELECTED:", selected);
   const [, dispatch] = useReducer(gameReducer, initialGameState);
-  const restartGame = () => {
-    dispatch({
-      type: "RESET_GAME",
-    });
+  // const [session] = useState(createGameSession());
+  // const isLocalGame = session.status === "local";
 
+  const restartGame = () => {
+    dispatch(resetGameAction());
     setPieces({
       0: "tiger",
       3: "tiger",
       4: "tiger",
     });
 
-    dispatch({
-      type: "SET_TURN",
-      payload: "goat",
-    });
-
+    dispatch(setTurnAction("goat"));
     setTurn("goat");
 
     setGoatsPlaced(0);
@@ -99,7 +104,7 @@ function App() {
     setGoatsKilled(0);
 
     setSelected(null);
-
+    dispatch(setWinnerAction(null));
     setWinner(null);
 
     setShowTutorial(false);
@@ -209,6 +214,7 @@ function App() {
           // 🐐 GOAT WIN CHECK
           if (checkGoatWin(newState)) {
             winAudio.play();
+            dispatch(setWinnerAction("goat"));
             setWinner("goat");
 
             setTimeout(() => {
@@ -216,26 +222,16 @@ function App() {
               // showMessage("🐐 Goats Win!");
             }, 100);
           }
-          dispatch({
-            type: "MOVE_PIECE",
-
-            payload: {
-              pieces: newState,
-
-              from,
-
-              to,
-
-              piece: pieceType,
-            },
-          });
+          dispatch(movePieceAction(newState, from, to, pieceType));
           return newState;
         });
 
         setGoatsKilled((prev) => {
           const updated = prev + 1;
+          dispatch(setGoatsKilledAction(updated));
 
           if (updated >= 5) {
+            dispatch(setWinnerAction("tiger"));
             setWinner("tiger");
             winAudio.play();
             // showMessage("🐅 Tigers Win!");
@@ -257,6 +253,7 @@ function App() {
 
         // 🐐 GOAT WIN CHECK
         if (checkGoatWin(newState)) {
+          dispatch(setWinnerAction("goat"));
           setWinner("goat");
 
           setTimeout(() => {
@@ -264,19 +261,7 @@ function App() {
             // showMessage("🐐 Goats Win!");
           }, 100);
         }
-        dispatch({
-          type: "MOVE_PIECE",
-
-          payload: {
-            pieces: newState,
-
-            from,
-
-            to,
-
-            piece: pieceType,
-          },
-        });
+        dispatch(movePieceAction(newState, from, to, pieceType));
         return newState;
       });
 
@@ -318,7 +303,12 @@ function App() {
           ...prev,
           [id]: "goat",
         }));
-        setGoatsPlaced((prev) => prev + 1);
+        setGoatsPlaced((prev) => {
+          const updated = prev + 1;
+
+          dispatch(setGoatsPlacedAction(updated));
+          return updated;
+        });
         const updatedPieces = {
           ...pieces,
           [id]: "goat",
@@ -326,12 +316,10 @@ function App() {
 
         if (allTigersBlocked(updatedPieces)) {
           winAudio.play();
+          dispatch(setWinnerAction("goat"));
           setWinner("goat");
         } else {
-          dispatch({
-            type: "SET_TURN",
-            payload: "tiger",
-          });
+          dispatch(setTurnAction("tiger"));
 
           setTurn("tiger");
         }
@@ -357,6 +345,7 @@ function App() {
           // 🐐 goats win
           if (!anyTigerCanMove) {
             winAudio.play();
+            dispatch(setWinnerAction("goat"));
             setWinner("goat");
           }
 
@@ -381,10 +370,7 @@ function App() {
       }
 
       setSelected(null);
-      dispatch({
-        type: "SET_TURN",
-        payload: "goat",
-      });
+      dispatch(setTurnAction("goat"));
 
       setTurn("goat");
       return;
@@ -421,12 +407,10 @@ function App() {
 
       if (allTigersBlocked(updatedPieces)) {
         winAudio.play();
+        dispatch(setWinnerAction("goat"));
         setWinner("goat");
       } else {
-        dispatch({
-          type: "SET_TURN",
-          payload: "tiger",
-        });
+        dispatch(setTurnAction("tiger"));
 
         setTurn("tiger");
       }

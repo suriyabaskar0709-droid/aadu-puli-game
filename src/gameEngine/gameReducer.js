@@ -1,22 +1,16 @@
-export const initialGameState = {
-  pieces: {},
-
-  turn: "goat",
-
-  goatsPlaced: 0,
-
-  goatsKilled: 0,
-
-  selected: null,
-
-  winner: null,
-
-  moveHistory: [],
-};
+import {
+  SET_TURN,
+  MOVE_PIECE,
+  SET_WINNER,
+  SET_GOATS_KILLED,
+  SET_GOATS_PLACED,
+  RESET_GAME,
+} from "./gameTypes";
+import { initialGameState } from "./initialGameState";
 
 export function gameReducer(state, action) {
   switch (action.type) {
-    case "RESET_GAME":
+    case RESET_GAME:
       return {
         ...initialGameState,
 
@@ -26,13 +20,13 @@ export function gameReducer(state, action) {
           4: "tiger",
         },
       };
-    case "SET_TURN":
+    case SET_TURN:
       return {
         ...state,
 
         turn: action.payload,
       };
-    case "MOVE_PIECE":
+    case MOVE_PIECE:
       return {
         ...state,
 
@@ -51,6 +45,23 @@ export function gameReducer(state, action) {
             timestamp: Date.now(),
           },
         ],
+      };
+    case SET_WINNER:
+      return {
+        ...state,
+        winner: action.payload,
+      };
+
+    case SET_GOATS_KILLED:
+      return {
+        ...state,
+        goatsKilled: action.payload,
+      };
+
+    case SET_GOATS_PLACED:
+      return {
+        ...state,
+        goatsPlaced: action.payload,
       };
     default:
       return state;
