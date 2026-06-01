@@ -19,6 +19,7 @@ import {
   movePieceAction,
 } from "./gameEngine/gameActions";
 import { createRoom } from "./multiplayer/roomManager";
+import { createRoomInFirestore } from "./firebase/firestoreService";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -424,8 +425,10 @@ function App() {
 
     setScreen("game");
   }
-  function startOnlineGame() {
+  async function startOnlineGame() {
     const room = createRoom();
+
+    await createRoomInFirestore(room);
 
     setSession((prev) => ({
       ...prev,
@@ -434,8 +437,8 @@ function App() {
 
       status: "waiting",
     }));
+
     setScreen("waiting");
-    // alert(`Room Created: ${room.roomId}`);
   }
   return (
     <div
