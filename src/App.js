@@ -11,13 +11,14 @@ import { gameReducer } from "./gameEngine/gameReducer";
 
 import { initialGameState } from "./gameEngine/initialGameState";
 import { resetGameAction, setTurnAction } from "./gameEngine/gameActions";
-// import { createGameSession } from "./multiplayer/gameSession";
+import { createGameSession } from "./multiplayer/gameSession";
 import {
   setWinnerAction,
   setGoatsKilledAction,
   setGoatsPlacedAction,
   movePieceAction,
 } from "./gameEngine/gameActions";
+import { createRoom } from "./multiplayer/roomManager";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -87,7 +88,8 @@ function App() {
   const [, dispatch] = useReducer(gameReducer, initialGameState);
   // const [session] = useState(createGameSession());
   // const isLocalGame = session.status === "local";
-
+  const [session, setSession] = useState(createGameSession());
+  console.log("SESSION", session);
   const restartGame = () => {
     dispatch(resetGameAction());
     setPieces({
@@ -118,6 +120,7 @@ function App() {
     }
   };
   const [screen, setScreen] = useState("home");
+  const [joinCode, setJoinCode] = useState("");
 
   // 🔥 CAPTURE LOGIC (FINAL)
   function findCapture(from, to) {
@@ -416,7 +419,24 @@ function App() {
       }
     }
   }
+  function startLocalGame() {
+    console.log("Starting Local Session");
 
+    setScreen("game");
+  }
+  function startOnlineGame() {
+    const room = createRoom();
+
+    setSession((prev) => ({
+      ...prev,
+
+      roomId: room.roomId,
+
+      status: "waiting",
+    }));
+    setScreen("waiting");
+    // alert(`Room Created: ${room.roomId}`);
+  }
   return (
     <div
       className="game-layout"
@@ -441,18 +461,29 @@ function App() {
 
             <p className="game-tagline">Ancient Tamil Strategy Reimagined</p>
 
-            <button
-              className="home-button primary"
-              onClick={() => setScreen("game")}
-            >
+            <button className="home-button primary" onClick={startLocalGame}>
               Play Local
             </button>
 
-            <button className="home-button secondary">
+            <button className="home-button secondary" onClick={startOnlineGame}>
               Online Multiplayer
               <span>Coming Soon</span>
             </button>
+            <button
+              className="home-button secondary"
+              onClick={() => setScreen("join-room")}
+            >
+              Join Room
+            </button>
+            {/* {session.status === "waiting" && (
+              <div className="waiting-room">
+                <h3>Room Created</h3>
 
+                <p>Room Code: {session.roomId}</p>
+
+                <p>Waiting for opponent...</p>
+              </div>
+            )} */}
             <button
               className="home-button secondary"
               onClick={() => {
@@ -463,6 +494,67 @@ function App() {
               Tutorial
             </button>
           </div>
+        </div>
+      )}
+      {screen === "waiting" && (
+        <div className="waiting-screen">
+          <h1>Waiting Room</h1>
+
+          <p>Room Code: {session.roomId}</p>
+
+          <p>Waiting for opponent...</p>
+          <button
+            className="home-button primary"
+            onClick={() => {
+              navigator.clipboard.writeText(session.roomId);
+              alert("Room Code Copied");
+            }}
+          >
+            Copy Room Code
+          </button>
+          <button
+            className="home-button secondary"
+            onClick={() => {
+              setSession(createGameSession());
+              setScreen("home");
+            }}
+          >
+            Back
+          </button>
+        </div>
+      )}
+      {screen === "join-room" && (
+        <div className="waiting-screen">
+          <h1>Join Room</h1>
+
+          <input
+            className="join-room-input"
+            type="text"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+            placeholder="Enter Room Code"
+          />
+
+          <button
+            className="home-button primary"
+            onClick={() => {
+              if (!joinCode.trim()) {
+                alert("Enter Room Code");
+                return;
+              }
+
+              alert(`Joining Room ${joinCode}`);
+            }}
+          >
+            Join
+          </button>
+
+          <button
+            className="home-button secondary"
+            onClick={() => setScreen("home")}
+          >
+            Back
+          </button>
         </div>
       )}
       {showTutorial && (
@@ -480,6 +572,7 @@ function App() {
           </div>
         </div>
       )}
+
       {screen === "game" && (
         <div className="game-main-container">
           {/* INFO PANEL */}
