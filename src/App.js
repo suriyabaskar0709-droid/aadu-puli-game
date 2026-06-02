@@ -1,4 +1,4 @@
-import React, { useState, useReducer } from "react";
+import React, { useState, useReducer, useEffect } from "react";
 import { points, connections } from "./data/board";
 import { GiTigerHead, GiGoat } from "react-icons/gi";
 import { Howl } from "howler";
@@ -19,7 +19,13 @@ import {
   movePieceAction,
 } from "./gameEngine/gameActions";
 import { createRoom } from "./multiplayer/roomManager";
-import { createRoomInFirestore } from "./firebase/firestoreService";
+import {
+  createRoomInFirestore,
+  getRoomFromFirestore,
+  joinRoomInFirestore,
+  listenToRoom,
+} from "./firebase/firestoreService";
+import { savePlayerName, getPlayerName } from "./utils/playerStorage";
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -122,6 +128,27 @@ function App() {
   };
   const [screen, setScreen] = useState("home");
   const [joinCode, setJoinCode] = useState("");
+  const [playerName, setPlayerName] = useState(getPlayerName());
+
+  useEffect(() => {
+    if (screen !== "waiting" || !session.roomId) {
+      return;
+    }
+
+    const unsubscribe = listenToRoom(
+      session.roomId,
+
+      (room) => {
+        console.log("ROOM UPDATE", room);
+
+        if (room.players && room.players.length >= 2) {
+          setScreen("game");
+        }
+      },
+    );
+
+    return unsubscribe;
+  }, [screen, session.roomId]);
 
   // 🔥 CAPTURE LOGIC (FINAL)
   function findCapture(from, to) {
@@ -426,7 +453,15 @@ function App() {
     setScreen("game");
   }
   async function startOnlineGame() {
-    const room = createRoom();
+    const hostPlayer = {
+      id: Date.now().toString(),
+
+      name: getPlayerName() || "Player",
+
+      role: "tiger",
+    };
+
+    const room = createRoom([hostPlayer]);
 
     await createRoomInFirestore(room);
 
@@ -509,8 +544,13 @@ function App() {
           <button
             className="home-button primary"
             onClick={() => {
-              navigator.clipboard.writeText(session.roomId);
-              alert("Room Code Copied");
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(session.roomId);
+
+                alert("Room Code Copied");
+              } else {
+                alert(`Room Code: ${session.roomId}`);
+              }
             }}
           >
             Copy Room Code
@@ -529,7 +569,13 @@ function App() {
       {screen === "join-room" && (
         <div className="waiting-screen">
           <h1>Join Room</h1>
-
+          <input
+            className="join-room-input"
+            type="text"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            placeholder="Enter Your Name"
+          />
           <input
             className="join-room-input"
             type="text"
@@ -540,13 +586,43 @@ function App() {
 
           <button
             className="home-button primary"
-            onClick={() => {
+            onClick={async () => {
+              if (!playerName.trim()) {
+                alert("Enter Your Name");
+                return;
+              }
+
               if (!joinCode.trim()) {
                 alert("Enter Room Code");
                 return;
               }
 
-              alert(`Joining Room ${joinCode}`);
+              const room = await getRoomFromFirestore(joinCode);
+
+              if (!room) {
+                alert("Room Not Found");
+                return;
+              }
+
+              const player = {
+                id: Date.now().toString(),
+
+                name: playerName,
+
+                role: "goat",
+              };
+
+              await joinRoomInFirestore(joinCode, player);
+              setSession((prev) => ({
+                ...prev,
+
+                roomId: joinCode,
+
+                status: "waiting",
+              }));
+              savePlayerName(playerName);
+              setScreen("waiting");
+              // alert(`${playerName} joined room`);
             }}
           >
             Join
