@@ -76,6 +76,8 @@ function App() {
   const [winner, setWinner] = useState(null);
   const [message, setMessage] = useState("");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [lastMove, setLastMove] = useState(null); // { from: number | null, to: number }
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [, dispatch] = useReducer(gameReducer, initialGameState);
   const [session, setSession] = useState(createGameSession());
@@ -88,11 +90,14 @@ function App() {
   // Push a complete validated board snapshot to Firestore (called ONLY on local moves)
   async function syncMoveToFirestore(nextState) {
     if (!isOnlineGame) return;
+    setIsSyncing(true);
     try {
       await updateGameState(session.roomId, nextState);
     } catch (error) {
       console.error("Failed to synchronize game state:", error);
       showMessage("Sync Error - Check Connection");
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -105,12 +110,13 @@ function App() {
     setGoatsPlaced(0);
     setGoatsKilled(0);
     setSelected(null);
+    setLastMove(null);
     dispatch(setWinnerAction(null));
     setWinner(null);
     setShowTutorial(false);
 
     if (isOnlineGame) {
-      await syncMoveToFirestore(fresh);
+      await syncMoveToFirestore({ ...fresh, lastMove: null });
     }
   };
 
@@ -155,6 +161,9 @@ function App() {
           }
           if ("winner" in shared) {
             setWinner(shared.winner);
+          }
+          if ("lastMove" in shared) {
+            setLastMove(shared.lastMove);
           }
           setSelected(null);
         }
@@ -350,8 +359,9 @@ function App() {
   }
 
   // CLICK HANDLER
+  // CLICK HANDLER
   function handleClick(id) {
-    if (winner) return;
+    if (winner || isSyncing) return;
 
     // Enforce player role during online multiplayer matches
     if (isOnlineGame && session.playerRole && session.playerRole !== turn) {
@@ -374,9 +384,11 @@ function App() {
         const blocked = allTigersBlocked(nextPieces);
         const nextWinner = blocked ? "goat" : null;
         const nextTurn = blocked ? "goat" : "tiger";
+        const nextLastMove = { from: null, to: id };
 
         setPieces(nextPieces);
         setGoatsPlaced(nextGoatsPlaced);
+        setLastMove(nextLastMove);
         dispatch(setGoatsPlacedAction(nextGoatsPlaced));
 
         if (nextWinner) {
@@ -394,6 +406,7 @@ function App() {
           goatsPlaced: nextGoatsPlaced,
           goatsKilled,
           winner: nextWinner,
+          lastMove: nextLastMove,
         });
       }
       return;
@@ -413,6 +426,7 @@ function App() {
               goatsPlaced,
               goatsKilled,
               winner: "goat",
+              lastMove,
             });
           } else {
             errorAudio.play();
@@ -438,7 +452,9 @@ function App() {
       }
 
       const nextTurn = result.nextWinner ? "tiger" : "goat";
+      const nextLastMove = { from: selected, to: id };
       setSelected(null);
+      setLastMove(nextLastMove);
       if (!result.nextWinner) {
         dispatch(setTurnAction("goat"));
         setTurn("goat");
@@ -450,6 +466,7 @@ function App() {
         goatsPlaced,
         goatsKilled: result.nextGoatsKilled,
         winner: result.nextWinner,
+        lastMove: nextLastMove,
       });
       return;
     }
@@ -474,7 +491,9 @@ function App() {
       }
 
       const nextTurn = result.nextWinner ? "goat" : "tiger";
+      const nextLastMove = { from: selected, to: id };
       setSelected(null);
+      setLastMove(nextLastMove);
       if (!result.nextWinner) {
         dispatch(setTurnAction("tiger"));
         setTurn("tiger");
@@ -486,10 +505,10 @@ function App() {
         goatsPlaced,
         goatsKilled: result.nextGoatsKilled,
         winner: result.nextWinner,
+        lastMove: nextLastMove,
       });
     }
   }
-
   function startLocalGame() {
     setSession(createGameSession());
     restartGame();
@@ -517,6 +536,7 @@ function App() {
       setGoatsKilled(0);
       setWinner(null);
       setSelected(null);
+      setLastMove(null);
 
       setSession((prev) => ({
         ...prev,
@@ -535,7 +555,6 @@ function App() {
       setIsCreatingRoom(false);
     }
   }
-
   return (
     <div
       className="game-layout"
@@ -878,9 +897,33 @@ function App() {
                 const isNormalMove = normalMoves.has(p.id);
                 const isCaptureMove = captureMoves.has(p.id);
                 const isHighlighted = isNormalMove || isCaptureMove;
+                const isLastFrom =
+                  lastMove?.from === p.id &&
+                  (goatsPlaced > 0 || goatsKilled > 0);
+                const isLastTo =
+                  lastMove?.to === p.id && (goatsPlaced > 0 || goatsKilled > 0);
 
                 return (
                   <g key={p.id} onClick={() => handleClick(p.id)}>
+                    {/* Last-Move Indicator Ring */}
+                    {(isLastFrom || isLastTo) && !isHighlighted && (
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r="29"
+                        fill="none"
+                        stroke={
+                          isLastTo
+                            ? "rgba(56, 189, 248, 0.85)"
+                            : "rgba(56, 189, 248, 0.4)"
+                        }
+                        strokeWidth={isLastTo ? "3" : "2"}
+                        strokeDasharray={isLastFrom ? "4 4" : "none"}
+                        pointerEvents="none"
+                      />
+                    )}
+
+                    {/* Valid Move / Capture Highlight Ring */}
                     {isHighlighted && (
                       <circle
                         cx={p.x}
@@ -902,6 +945,7 @@ function App() {
                         }}
                       />
                     )}
+
                     <circle
                       cx={p.x}
                       cy={p.y}
@@ -928,7 +972,6 @@ function App() {
                   </g>
                 );
               })}
-
               {/* PIECES */}
               {Object.entries(pieces).map(([pos, type]) => {
                 const point = points[pos];
