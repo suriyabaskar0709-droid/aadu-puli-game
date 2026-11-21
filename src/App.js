@@ -8,24 +8,32 @@ import winSound from "./sounds/win.mp3";
 import warningSound from "./sounds/error.mp3";
 import "./App.css";
 import { gameReducer } from "./gameEngine/gameReducer";
-
 import { initialGameState } from "./gameEngine/initialGameState";
-import { resetGameAction, setTurnAction } from "./gameEngine/gameActions";
-import { createGameSession } from "./multiplayer/gameSession";
 import {
+  resetGameAction,
+  setTurnAction,
   setWinnerAction,
   setGoatsKilledAction,
   setGoatsPlacedAction,
   movePieceAction,
 } from "./gameEngine/gameActions";
-import { createRoom } from "./multiplayer/roomManager";
+import { createGameSession } from "./multiplayer/gameSession";
+import { createRoom, createInitialBoardState } from "./multiplayer/roomManager";
 import {
   createRoomInFirestore,
   getRoomFromFirestore,
   joinRoomInFirestore,
   listenToRoom,
+  updateGameState,
 } from "./firebase/firestoreService";
 import { savePlayerName, getPlayerName } from "./utils/playerStorage";
+
+// Initialize sounds once outside component to prevent re-creation on every render
+const clickAudio = new Howl({ src: [clickSound], volume: 0.4 });
+const captureAudio = new Howl({ src: [captureSound], volume: 0.7 });
+const winAudio = new Howl({ src: [winSound], volume: 0.8 });
+const errorAudio = new Howl({ src: [warningSound], volume: 0.5 });
+
 function App() {
   const [pieces, setPieces] = useState({
     0: "tiger",
@@ -37,29 +45,25 @@ function App() {
   const [showTutorial, setShowTutorial] = useState(
     !localStorage.getItem("tutorialSeen"),
   );
-
   const [tutorialStep, setTutorialStep] = useState(0);
+
   const tutorialCards = [
     {
       title: "Welcome",
       text: "Aadu Puli Aattam is a traditional Tamil strategy game between Tigers and Goats.",
     },
-
     {
       title: "🐐 Goat Objective",
       text: "Goats must surround and trap all Tigers so they cannot move.",
     },
-
     {
       title: "🐅 Tiger Objective",
       text: "Tigers win by capturing 5 goats before the goats trap them.",
     },
-
     {
       title: "⚔ Capturing",
       text: "A Tiger captures a Goat by jumping over it into an empty connected node.",
     },
-
     {
       title: "Ready?",
       text: "Plan carefully. Every move matters.",
@@ -71,53 +75,45 @@ function App() {
   const [goatsKilled, setGoatsKilled] = useState(0);
   const [winner, setWinner] = useState(null);
   const [message, setMessage] = useState("");
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
 
-  const clickAudio = new Howl({
-    src: [clickSound],
-    volume: 0.4,
-  });
-
-  const captureAudio = new Howl({
-    src: [captureSound],
-    volume: 0.7,
-  });
-
-  const winAudio = new Howl({
-    src: [winSound],
-    volume: 0.8,
-  });
-  const errorAudio = new Howl({
-    src: [warningSound],
-    volume: 0.5,
-  });
-
-  console.log("TURN:", turn, "SELECTED:", selected);
   const [, dispatch] = useReducer(gameReducer, initialGameState);
-  // const [session] = useState(createGameSession());
-  // const isLocalGame = session.status === "local";
   const [session, setSession] = useState(createGameSession());
-  console.log("SESSION", session);
-  const restartGame = () => {
-    dispatch(resetGameAction());
-    setPieces({
-      0: "tiger",
-      3: "tiger",
-      4: "tiger",
-    });
+  const [screen, setScreen] = useState("home");
+  const [joinCode, setJoinCode] = useState("");
+  const [playerName, setPlayerName] = useState(getPlayerName());
 
+  const isOnlineGame = Boolean(session.roomId && session.status !== "local");
+
+  // Push a complete validated board snapshot to Firestore (called ONLY on local moves)
+  async function syncMoveToFirestore(nextState) {
+    if (!isOnlineGame) return;
+    try {
+      await updateGameState(session.roomId, nextState);
+    } catch (error) {
+      console.error("Failed to synchronize game state:", error);
+      showMessage("Sync Error - Check Connection");
+    }
+  }
+
+  const restartGame = async () => {
+    const fresh = createInitialBoardState();
+    dispatch(resetGameAction());
+    setPieces(fresh.pieces);
     dispatch(setTurnAction("goat"));
     setTurn("goat");
-
     setGoatsPlaced(0);
-
     setGoatsKilled(0);
-
     setSelected(null);
     dispatch(setWinnerAction(null));
     setWinner(null);
-
     setShowTutorial(false);
+
+    if (isOnlineGame) {
+      await syncMoveToFirestore(fresh);
+    }
   };
+
   const nextTutorial = () => {
     if (tutorialStep < tutorialCards.length - 1) {
       setTutorialStep(tutorialStep + 1);
@@ -126,48 +122,62 @@ function App() {
       setShowTutorial(false);
     }
   };
-  const [screen, setScreen] = useState("home");
-  const [joinCode, setJoinCode] = useState("");
-  const [playerName, setPlayerName] = useState(getPlayerName());
 
+  // Listen for room and game-state changes from Firestore
   useEffect(() => {
-    if (screen !== "waiting" || !session.roomId) {
+    if (!session.roomId || session.status === "local") {
       return;
     }
 
     const unsubscribe = listenToRoom(
       session.roomId,
-
       (room) => {
-        console.log("ROOM UPDATE", room);
-
         if (room.players && room.players.length >= 2) {
-          setScreen("game");
+          setScreen((currentScreen) =>
+            currentScreen === "waiting" ? "game" : currentScreen,
+          );
         }
+
+        if (room.gameState) {
+          const shared = room.gameState;
+
+          if (shared.pieces) {
+            setPieces(shared.pieces);
+          }
+          if (shared.turn) {
+            setTurn(shared.turn);
+          }
+          if (typeof shared.goatsPlaced === "number") {
+            setGoatsPlaced(shared.goatsPlaced);
+          }
+          if (typeof shared.goatsKilled === "number") {
+            setGoatsKilled(shared.goatsKilled);
+          }
+          if ("winner" in shared) {
+            setWinner(shared.winner);
+          }
+          setSelected(null);
+        }
+      },
+      (error) => {
+        alert(`Connection lost: ${error.message}`);
       },
     );
 
     return unsubscribe;
-  }, [screen, session.roomId]);
+  }, [session.roomId, session.status]);
 
-  // 🔥 CAPTURE LOGIC (FINAL)
-  function findCapture(from, to) {
+  // CAPTURE LOGIC
+  function findCapture(from, to, boardPieces = pieces) {
     for (let mid of connections[from] || []) {
-      if (pieces[mid] !== "goat") continue;
-
+      if (boardPieces[mid] !== "goat") continue;
       if (!connections[mid]?.includes(to)) continue;
-
-      // ❌ prevent direct move
       if (connections[from].includes(to)) continue;
 
-      // 🔥 KEY: check straight-line (no bend)
-
-      // find common nodes between from & to
       const common = (connections[from] || []).filter((n) =>
         (connections[to] || []).includes(n),
       );
 
-      // if more than 1 shared path → likely bend → reject
       if (
         common.length > 1 &&
         !(from >= 1 && from <= 6 && to >= 1 && to <= 6)
@@ -180,30 +190,22 @@ function App() {
 
     return null;
   }
+
   function tigerCanMove(pos, currentPieces) {
-    // 🟢 NORMAL MOVES
     for (let next of connections[pos] || []) {
       if (!currentPieces[next]) {
         return true;
       }
     }
 
-    // 🔥 CAPTURE MOVES
     for (let mid of connections[pos] || []) {
-      // must be goat
       if (currentPieces[mid] !== "goat") continue;
 
-      // check jump destination
       for (let landing of connections[mid] || []) {
-        // landing must be empty
         if (currentPieces[landing]) continue;
-
-        // landing cannot be original position
         if (landing === pos) continue;
 
-        // must form valid capture
-        const result = findCapture(pos, landing);
-
+        const result = findCapture(pos, landing, currentPieces);
         if (result === mid) {
           return true;
         }
@@ -212,101 +214,7 @@ function App() {
 
     return false;
   }
-  function checkGoatWin(currentPieces) {
-    const tigerPositions = Object.keys(currentPieces).filter(
-      (k) => currentPieces[k] === "tiger",
-    );
 
-    for (let pos of tigerPositions) {
-      if (tigerCanMove(Number(pos), currentPieces)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-  // 🔥 MOVE FUNCTION
-  function movePiece(from, to) {
-    const pieceType = pieces[from];
-
-    // 🔥 TIGER CAPTURE
-    if (pieceType === "tiger") {
-      const mid = findCapture(from, to);
-
-      if (mid !== null && !pieces[to]) {
-        captureAudio.play();
-        setPieces((prev) => {
-          const newState = { ...prev };
-
-          newState[to] = "tiger";
-          delete newState[from];
-          delete newState[mid];
-
-          // 🐐 GOAT WIN CHECK
-          if (checkGoatWin(newState)) {
-            winAudio.play();
-            dispatch(setWinnerAction("goat"));
-            setWinner("goat");
-
-            setTimeout(() => {
-              winAudio.play();
-              // showMessage("🐐 Goats Win!");
-            }, 100);
-          }
-          dispatch(movePieceAction(newState, from, to, pieceType));
-          return newState;
-        });
-
-        setGoatsKilled((prev) => {
-          const updated = prev + 1;
-          dispatch(setGoatsKilledAction(updated));
-
-          if (updated >= 5) {
-            dispatch(setWinnerAction("tiger"));
-            setWinner("tiger");
-            winAudio.play();
-            // showMessage("🐅 Tigers Win!");
-          }
-
-          return updated;
-        });
-        return true; // ✅ VALID MOVE
-      }
-    }
-
-    // 🟢 NORMAL MOVE (GOAT + TIGER)
-    if (connections[from]?.includes(to) && !pieces[to]) {
-      setPieces((prev) => {
-        const newState = { ...prev };
-
-        newState[to] = pieceType;
-        delete newState[from];
-
-        // 🐐 GOAT WIN CHECK
-        if (checkGoatWin(newState)) {
-          dispatch(setWinnerAction("goat"));
-          setWinner("goat");
-
-          setTimeout(() => {
-            winAudio.play();
-            // showMessage("🐐 Goats Win!");
-          }, 100);
-        }
-        dispatch(movePieceAction(newState, from, to, pieceType));
-        return newState;
-      });
-
-      return true;
-    }
-    return false;
-  }
-  function showMessage(text) {
-    setMessage(text);
-
-    setTimeout(() => {
-      setMessage("");
-    }, 1500);
-  }
   function allTigersBlocked(currentPieces) {
     const tigerPositions = Object.keys(currentPieces).filter(
       (key) => currentPieces[key] === "tiger",
@@ -321,65 +229,156 @@ function App() {
     return true;
   }
 
-  // 🔥 CLICK HANDLER (FIXED CLEANLY)
+  // Computes the next board state synchronously so both React and Firestore receive identical data
+  function executeMove(from, to) {
+    const pieceType = pieces[from];
+
+    // 1. TIGER CAPTURE
+    if (pieceType === "tiger") {
+      const mid = findCapture(from, to, pieces);
+
+      if (mid !== null && !pieces[to]) {
+        captureAudio.play();
+        const nextPieces = { ...pieces };
+        nextPieces[to] = "tiger";
+        delete nextPieces[from];
+        delete nextPieces[mid];
+
+        const nextGoatsKilled = goatsKilled + 1;
+        let nextWinner = null;
+
+        if (nextGoatsKilled >= 5) {
+          nextWinner = "tiger";
+          winAudio.play();
+        } else if (allTigersBlocked(nextPieces)) {
+          nextWinner = "goat";
+          winAudio.play();
+        }
+
+        setPieces(nextPieces);
+        setGoatsKilled(nextGoatsKilled);
+        dispatch(movePieceAction(nextPieces, from, to, pieceType));
+        dispatch(setGoatsKilledAction(nextGoatsKilled));
+        if (nextWinner) {
+          setWinner(nextWinner);
+          dispatch(setWinnerAction(nextWinner));
+        }
+
+        return {
+          valid: true,
+          nextPieces,
+          nextGoatsKilled,
+          nextWinner,
+        };
+      }
+    }
+
+    // 2. NORMAL MOVE (GOAT + TIGER)
+    if (connections[from]?.includes(to) && !pieces[to]) {
+      const nextPieces = { ...pieces };
+      nextPieces[to] = pieceType;
+      delete nextPieces[from];
+
+      let nextWinner = null;
+      if (allTigersBlocked(nextPieces)) {
+        nextWinner = "goat";
+        winAudio.play();
+      }
+
+      setPieces(nextPieces);
+      dispatch(movePieceAction(nextPieces, from, to, pieceType));
+      if (nextWinner) {
+        setWinner(nextWinner);
+        dispatch(setWinnerAction(nextWinner));
+      }
+
+      return {
+        valid: true,
+        nextPieces,
+        nextGoatsKilled: goatsKilled,
+        nextWinner,
+      };
+    }
+
+    return { valid: false };
+  }
+
+  function showMessage(text) {
+    setMessage(text);
+    setTimeout(() => {
+      setMessage("");
+    }, 1500);
+  }
+
+  // CLICK HANDLER
   function handleClick(id) {
-    clickAudio.play();
     if (winner) return;
+
+    // Enforce player role during online multiplayer matches
+    if (isOnlineGame && session.playerRole && session.playerRole !== turn) {
+      errorAudio.play();
+      showMessage(`Wait for ${turn.toUpperCase()}'s turn`);
+      return;
+    }
+
+    clickAudio.play();
     const piece = pieces[id];
 
-    // 🐐 PHASE 1: GOAT PLACEMENT
+    // GOAT PHASE 1: PLACEMENT
     if (turn === "goat" && goatsPlaced < 15) {
       if (!piece) {
-        setPieces((prev) => ({
-          ...prev,
-          [id]: "goat",
-        }));
-        setGoatsPlaced((prev) => {
-          const updated = prev + 1;
-
-          dispatch(setGoatsPlacedAction(updated));
-          return updated;
-        });
-        const updatedPieces = {
+        const nextPieces = {
           ...pieces,
           [id]: "goat",
         };
+        const nextGoatsPlaced = goatsPlaced + 1;
+        const blocked = allTigersBlocked(nextPieces);
+        const nextWinner = blocked ? "goat" : null;
+        const nextTurn = blocked ? "goat" : "tiger";
 
-        if (allTigersBlocked(updatedPieces)) {
+        setPieces(nextPieces);
+        setGoatsPlaced(nextGoatsPlaced);
+        dispatch(setGoatsPlacedAction(nextGoatsPlaced));
+
+        if (nextWinner) {
           winAudio.play();
           dispatch(setWinnerAction("goat"));
           setWinner("goat");
         } else {
           dispatch(setTurnAction("tiger"));
-
           setTurn("tiger");
         }
+
+        syncMoveToFirestore({
+          pieces: nextPieces,
+          turn: nextTurn,
+          goatsPlaced: nextGoatsPlaced,
+          goatsKilled,
+          winner: nextWinner,
+        });
       }
       return;
     }
 
-    // 🐅 TIGER TURN (ALWAYS WORKS)
+    // TIGER TURN
     if (turn === "tiger") {
-      // 🔥 selecting tiger
       if (piece === "tiger") {
-        // ❌ trapped tiger cannot be selected
         if (!tigerCanMove(id, pieces)) {
-          // check if ALL tigers trapped
-          const tigerPositions = Object.keys(pieces).filter(
-            (key) => pieces[key] === "tiger",
-          );
-
-          const anyTigerCanMove = tigerPositions.some((tigerId) =>
-            tigerCanMove(Number(tigerId), pieces),
-          );
-
-          // 🐐 goats win
-          if (!anyTigerCanMove) {
+          if (allTigersBlocked(pieces)) {
             winAudio.play();
             dispatch(setWinnerAction("goat"));
             setWinner("goat");
+            syncMoveToFirestore({
+              pieces,
+              turn,
+              goatsPlaced,
+              goatsKilled,
+              winner: "goat",
+            });
+          } else {
+            errorAudio.play();
+            showMessage("This tiger is blocked");
           }
-
           return;
         }
 
@@ -387,26 +386,36 @@ function App() {
         return;
       }
 
-      // no tiger selected yet
       if (selected === null) {
         return;
       }
 
-      const moved = movePiece(selected, id);
+      const result = executeMove(selected, id);
 
-      if (!moved) {
+      if (!result.valid) {
         errorAudio.play();
         showMessage("Illegal Move");
         return;
       }
 
+      const nextTurn = result.nextWinner ? "tiger" : "goat";
       setSelected(null);
-      dispatch(setTurnAction("goat"));
+      if (!result.nextWinner) {
+        dispatch(setTurnAction("goat"));
+        setTurn("goat");
+      }
 
-      setTurn("goat");
+      syncMoveToFirestore({
+        pieces: result.nextPieces,
+        turn: nextTurn,
+        goatsPlaced,
+        goatsKilled: result.nextGoatsKilled,
+        winner: result.nextWinner,
+      });
       return;
     }
-    // 🐐 PHASE 2: GOAT MOVEMENT
+
+    // GOAT PHASE 2: MOVEMENT
     if (turn === "goat" && goatsPlaced >= 15) {
       if (piece === "goat") {
         setSelected(id);
@@ -417,64 +426,77 @@ function App() {
         return;
       }
 
-      const moved = movePiece(selected, id);
+      const result = executeMove(selected, id);
 
-      if (!moved) {
+      if (!result.valid) {
         errorAudio.play();
         showMessage("Illegal Move");
-
-        // allow selecting another goat
-
         return;
       }
 
+      const nextTurn = result.nextWinner ? "goat" : "tiger";
       setSelected(null);
-
-      const updatedPieces = {
-        ...pieces,
-        [selected]: null,
-        [id]: "goat",
-      };
-
-      if (allTigersBlocked(updatedPieces)) {
-        winAudio.play();
-        dispatch(setWinnerAction("goat"));
-        setWinner("goat");
-      } else {
+      if (!result.nextWinner) {
         dispatch(setTurnAction("tiger"));
-
         setTurn("tiger");
       }
+
+      syncMoveToFirestore({
+        pieces: result.nextPieces,
+        turn: nextTurn,
+        goatsPlaced,
+        goatsKilled: result.nextGoatsKilled,
+        winner: result.nextWinner,
+      });
     }
   }
-  function startLocalGame() {
-    console.log("Starting Local Session");
 
+  function startLocalGame() {
+    setSession(createGameSession());
+    restartGame();
     setScreen("game");
   }
+
   async function startOnlineGame() {
-    const hostPlayer = {
-      id: Date.now().toString(),
+    if (isCreatingRoom) return;
+    setIsCreatingRoom(true);
 
-      name: getPlayerName() || "Player",
+    try {
+      const hostPlayer = {
+        id: Date.now().toString(),
+        name: getPlayerName() || "Host (Tiger)",
+        role: "tiger",
+      };
 
-      role: "tiger",
-    };
+      const room = createRoom([hostPlayer]);
+      await createRoomInFirestore(room);
 
-    const room = createRoom([hostPlayer]);
+      const fresh = createInitialBoardState();
+      setPieces(fresh.pieces);
+      setTurn("goat");
+      setGoatsPlaced(0);
+      setGoatsKilled(0);
+      setWinner(null);
+      setSelected(null);
 
-    await createRoomInFirestore(room);
+      setSession((prev) => ({
+        ...prev,
+        roomId: room.roomId,
+        status: "waiting",
+        playerRole: "tiger",
+      }));
 
-    setSession((prev) => ({
-      ...prev,
-
-      roomId: room.roomId,
-
-      status: "waiting",
-    }));
-
-    setScreen("waiting");
+      setScreen("waiting");
+    } catch (error) {
+      console.error("Failed to create online room:", error);
+      alert(
+        `Could not create room: ${error.message}\n\nCheck your internet connection or Firebase Firestore rules.`,
+      );
+    } finally {
+      setIsCreatingRoom(false);
+    }
   }
+
   return (
     <div
       className="game-layout"
@@ -496,32 +518,27 @@ function App() {
           <div className="background-glow glow-3"></div>
           <div className="home-content">
             <h1 className="game-title">AADU PULI AATTAM</h1>
-
             <p className="game-tagline">Ancient Tamil Strategy Reimagined</p>
 
             <button className="home-button primary" onClick={startLocalGame}>
               Play Local
             </button>
 
-            <button className="home-button secondary" onClick={startOnlineGame}>
-              Online Multiplayer
-              <span>Coming Soon</span>
+            <button
+              className="home-button secondary"
+              onClick={startOnlineGame}
+              disabled={isCreatingRoom}
+            >
+              {isCreatingRoom ? "Creating Room..." : "Online Multiplayer"}
             </button>
+
             <button
               className="home-button secondary"
               onClick={() => setScreen("join-room")}
             >
               Join Room
             </button>
-            {/* {session.status === "waiting" && (
-              <div className="waiting-room">
-                <h3>Room Created</h3>
 
-                <p>Room Code: {session.roomId}</p>
-
-                <p>Waiting for opponent...</p>
-              </div>
-            )} */}
             <button
               className="home-button secondary"
               onClick={() => {
@@ -534,19 +551,24 @@ function App() {
           </div>
         </div>
       )}
+
       {screen === "waiting" && (
         <div className="waiting-screen">
           <h1>Waiting Room</h1>
-
           <p>Room Code: {session.roomId}</p>
-
+          <p>
+            You are playing as:{" "}
+            <strong>
+              {session.playerRole === "tiger" ? "🐅 Tiger" : "🐐 Goat"}
+            </strong>
+          </p>
           <p>Waiting for opponent...</p>
+
           <button
             className="home-button primary"
             onClick={() => {
               if (navigator.clipboard) {
                 navigator.clipboard.writeText(session.roomId);
-
                 alert("Room Code Copied");
               } else {
                 alert(`Room Code: ${session.roomId}`);
@@ -555,6 +577,7 @@ function App() {
           >
             Copy Room Code
           </button>
+
           <button
             className="home-button secondary"
             onClick={() => {
@@ -566,6 +589,7 @@ function App() {
           </button>
         </div>
       )}
+
       {screen === "join-room" && (
         <div className="waiting-screen">
           <h1>Join Room</h1>
@@ -591,38 +615,37 @@ function App() {
                 alert("Enter Your Name");
                 return;
               }
-
               if (!joinCode.trim()) {
                 alert("Enter Room Code");
                 return;
               }
 
-              const room = await getRoomFromFirestore(joinCode);
+              try {
+                const room = await getRoomFromFirestore(joinCode.trim());
+                if (!room) {
+                  alert("Room Not Found");
+                  return;
+                }
 
-              if (!room) {
-                alert("Room Not Found");
-                return;
+                const player = {
+                  id: Date.now().toString(),
+                  name: playerName.trim(),
+                  role: "goat",
+                };
+
+                await joinRoomInFirestore(joinCode.trim(), player);
+                setSession((prev) => ({
+                  ...prev,
+                  roomId: joinCode.trim(),
+                  status: "waiting",
+                  playerRole: "goat",
+                }));
+                savePlayerName(playerName.trim());
+                setScreen("waiting");
+              } catch (error) {
+                console.error("Failed to join room:", error);
+                alert(`Could not join room: ${error.message}`);
               }
-
-              const player = {
-                id: Date.now().toString(),
-
-                name: playerName,
-
-                role: "goat",
-              };
-
-              await joinRoomInFirestore(joinCode, player);
-              setSession((prev) => ({
-                ...prev,
-
-                roomId: joinCode,
-
-                status: "waiting",
-              }));
-              savePlayerName(playerName);
-              setScreen("waiting");
-              // alert(`${playerName} joined room`);
             }}
           >
             Join
@@ -636,13 +659,12 @@ function App() {
           </button>
         </div>
       )}
+
       {showTutorial && (
         <div className="tutorial-overlay">
           <div className="tutorial-card">
             <h1>{tutorialCards[tutorialStep].title}</h1>
-
             <p>{tutorialCards[tutorialStep].text}</p>
-
             <button className="tutorial-button" onClick={nextTutorial}>
               {tutorialStep === tutorialCards.length - 1
                 ? "Start Game"
@@ -658,12 +680,9 @@ function App() {
           <div
             className="game-sidebar"
             style={{
-              // width: "280px",
               background:
                 "linear-gradient(145deg, rgba(20,20,20,0.95), rgba(10,10,10,0.92))",
               border: "1px solid rgba(255,255,255,0.12)",
-              // borderRadius: "20px",
-              // padding: "24px",
               color: "white",
               backdropFilter: "blur(10px)",
               boxShadow:
@@ -681,6 +700,21 @@ function App() {
             >
               Aadu Puli Aattam
             </h1>
+
+            {isOnlineGame && (
+              <p
+                style={{
+                  textAlign: "center",
+                  color: "#ffd60a",
+                  marginBottom: "10px",
+                  fontWeight: "bold",
+                }}
+              >
+                Room: {session.roomId} | You:{" "}
+                {session.playerRole === "tiger" ? "🐅 Tiger" : "🐐 Goat"}
+              </p>
+            )}
+
             {!winner && (
               <h2
                 style={{
@@ -688,9 +722,10 @@ function App() {
                   color: "#ddd",
                 }}
               >
-                Turn: {turn}
+                Turn: {turn.toUpperCase()}
               </h2>
             )}
+
             {message && (
               <div
                 style={{
@@ -751,6 +786,7 @@ function App() {
             >
               Goats Killed: {goatsKilled}
             </h3>
+
             {winner && (
               <button onClick={restartGame} className="restart-button">
                 Restart Game
@@ -762,7 +798,6 @@ function App() {
           <div
             className="game-board-container"
             style={{
-              // flex: 1,
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
@@ -771,16 +806,14 @@ function App() {
             <svg
               viewBox="0 0 900 850"
               style={{
-                // width: "min(75vw, 850px)",
                 height: "auto",
-                // maxHeight: "90vh",
                 filter: "drop-shadow(0 0 18px rgba(255,255,255,0.12))",
               }}
             >
               {/* LINES */}
               {Object.entries(connections).map(([from, toList]) =>
                 toList.map((to) => {
-                  if (from < to) {
+                  if (Number(from) < Number(to)) {
                     const p1 = points[from];
                     const p2 = points[to];
 
@@ -797,7 +830,6 @@ function App() {
                       />
                     );
                   }
-
                   return null;
                 }),
               )}
@@ -829,6 +861,7 @@ function App() {
               {/* PIECES */}
               {Object.entries(pieces).map(([pos, type]) => {
                 const point = points[pos];
+                if (!point) return null;
 
                 return (
                   <g key={pos} onClick={() => handleClick(Number(pos))}>
@@ -887,4 +920,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
