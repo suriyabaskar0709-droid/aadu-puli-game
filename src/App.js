@@ -228,6 +228,45 @@ function App() {
 
     return true;
   }
+  function getHighlightedNodes() {
+    const normalMoves = new Set();
+    const captureMoves = new Set();
+
+    if (selected === null || winner) {
+      return { normalMoves, captureMoves };
+    }
+
+    const pieceType = pieces[selected];
+    if (!pieceType) {
+      return { normalMoves, captureMoves };
+    }
+
+    // Adjacent empty nodes (for both Tiger and Goat)
+    for (let next of connections[selected] || []) {
+      if (!pieces[next]) {
+        normalMoves.add(next);
+      }
+    }
+
+    // Straight-line jump captures (Tiger only)
+    if (pieceType === "tiger") {
+      for (let mid of connections[selected] || []) {
+        if (pieces[mid] !== "goat") continue;
+
+        for (let landing of connections[mid] || []) {
+          if (pieces[landing] || landing === selected) continue;
+
+          if (findCapture(selected, landing, pieces) === mid) {
+            captureMoves.add(landing);
+          }
+        }
+      }
+    }
+
+    return { normalMoves, captureMoves };
+  }
+
+  const { normalMoves, captureMoves } = getHighlightedNodes();
 
   // Computes the next board state synchronously so both React and Firestore receive identical data
   function executeMove(from, to) {
@@ -835,28 +874,60 @@ function App() {
               )}
 
               {/* POINTS */}
-              {points.map((p) => (
-                <circle
-                  key={p.id}
-                  cx={p.x}
-                  cy={p.y}
-                  r="20"
-                  fill={
-                    selected === p.id
-                      ? "#ffd60a"
-                      : pieces[p.id] === "tiger"
-                        ? "#2d2d2d"
-                        : "#1a1a1a"
-                  }
-                  style={{
-                    filter:
-                      selected === p.id
-                        ? "drop-shadow(0 0 12px rgba(255,214,10,0.9))"
-                        : "none",
-                  }}
-                  onClick={() => handleClick(p.id)}
-                />
-              ))}
+              {points.map((p) => {
+                const isNormalMove = normalMoves.has(p.id);
+                const isCaptureMove = captureMoves.has(p.id);
+                const isHighlighted = isNormalMove || isCaptureMove;
+
+                return (
+                  <g key={p.id} onClick={() => handleClick(p.id)}>
+                    {isHighlighted && (
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r="26"
+                        fill={
+                          isCaptureMove
+                            ? "rgba(255, 77, 77, 0.22)"
+                            : "rgba(56, 255, 179, 0.2)"
+                        }
+                        stroke={isCaptureMove ? "#ff4d4d" : "#38ffb3"}
+                        strokeWidth="3"
+                        strokeDasharray={isCaptureMove ? "6 4" : "none"}
+                        style={{
+                          cursor: "pointer",
+                          filter: isCaptureMove
+                            ? "drop-shadow(0 0 12px rgba(255, 77, 77, 0.9))"
+                            : "drop-shadow(0 0 10px rgba(56, 255, 179, 0.85))",
+                        }}
+                      />
+                    )}
+                    <circle
+                      cx={p.x}
+                      cy={p.y}
+                      r="20"
+                      fill={
+                        selected === p.id
+                          ? "#ffd60a"
+                          : isCaptureMove
+                            ? "#4a1515"
+                            : isNormalMove
+                              ? "#143d2e"
+                              : pieces[p.id] === "tiger"
+                                ? "#2d2d2d"
+                                : "#1a1a1a"
+                      }
+                      style={{
+                        cursor: isHighlighted ? "pointer" : "default",
+                        filter:
+                          selected === p.id
+                            ? "drop-shadow(0 0 12px rgba(255,214,10,0.9))"
+                            : "none",
+                      }}
+                    />
+                  </g>
+                );
+              })}
 
               {/* PIECES */}
               {Object.entries(pieces).map(([pos, type]) => {
