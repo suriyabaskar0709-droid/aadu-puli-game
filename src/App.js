@@ -1,7 +1,7 @@
 import React, { useState, useReducer, useEffect } from "react";
 import { points, connections } from "./data/board";
 import { GiTigerHead, GiGoat } from "react-icons/gi";
-import { Howl } from "howler";
+import { Howl, Howler } from "howler";
 import clickSound from "./sounds/click.wav";
 import captureSound from "./sounds/capture.mp3";
 import winSound from "./sounds/win.mp3";
@@ -26,7 +26,7 @@ import {
   listenToRoom,
   updateGameState,
 } from "./firebase/firestoreService";
-import { savePlayerName, getPlayerName } from "./utils/playerStorage";
+import { getPlayerName } from "./utils/playerStorage";
 
 // Initialize sounds once outside component to prevent re-creation on every render
 const clickAudio = new Howl({ src: [clickSound], volume: 0.4 });
@@ -78,12 +78,42 @@ function App() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [lastMove, setLastMove] = useState(null); // { from: number | null, to: number }
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [opponentLeftMessage, setOpponentLeftMessage] = useState("");
+  const [toast, setToast] = useState({ text: "", type: "info" });
+
+  const showToast = (text, type = "error") => {
+    setToast({ text, type });
+    setTimeout(() => {
+      setToast({ text: "", type: "info" });
+    }, 2800);
+  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invitedRoom = params.get("room");
+    if (invitedRoom) {
+      setJoinCode(invitedRoom.trim().toUpperCase());
+      setScreen("join-room");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    Howler.mute(nextMuted);
+    setIsMuted(nextMuted);
+  };
+
+  // Count how many Tigers currently have zero legal moves
+  const blockedTigersCount = Object.keys(pieces).filter(
+    (key) => pieces[key] === "tiger" && !tigerCanMove(Number(key), pieces),
+  ).length;
 
   const [, dispatch] = useReducer(gameReducer, initialGameState);
   const [session, setSession] = useState(createGameSession());
   const [screen, setScreen] = useState("home");
   const [joinCode, setJoinCode] = useState("");
-  const [playerName, setPlayerName] = useState(getPlayerName());
+  // const [playerName, setPlayerName] = useState(getPlayerName());
 
   const isOnlineGame = Boolean(session.roomId && session.status !== "local");
 
@@ -119,6 +149,29 @@ function App() {
       await syncMoveToFirestore({ ...fresh, lastMove: null });
     }
   };
+  const leaveMatch = async () => {
+    if (isOnlineGame && session.roomId && !winner) {
+      try {
+        await updateGameState(session.roomId, {
+          pieces,
+          turn,
+          goatsPlaced,
+          goatsKilled,
+          winner,
+          lastMove,
+          abandonedBy: session.playerRole, // "tiger" or "goat"
+        });
+      } catch (err) {
+        console.error("Failed to notify opponent of leave:", err);
+      }
+    }
+
+    setSession(createGameSession());
+    setSelected(null);
+    setWinner(null);
+    setLastMove(null);
+    setScreen("home");
+  };
 
   const nextTutorial = () => {
     if (tutorialStep < tutorialCards.length - 1) {
@@ -130,6 +183,7 @@ function App() {
   };
 
   // Listen for room and game-state changes from Firestore
+  // Listen for room and game-state changes from Firestore
   useEffect(() => {
     if (!session.roomId || session.status === "local") {
       return;
@@ -139,6 +193,9 @@ function App() {
       session.roomId,
       (room) => {
         if (room.players && room.players.length >= 2) {
+          setSession((prev) =>
+            prev.status === "waiting" ? { ...prev, status: "playing" } : prev,
+          );
           setScreen((currentScreen) =>
             currentScreen === "waiting" ? "game" : currentScreen,
           );
@@ -147,6 +204,11 @@ function App() {
         if (room.gameState) {
           const shared = room.gameState;
 
+          if (shared.abandonedBy && shared.abandonedBy !== session.playerRole) {
+            const leftRole = shared.abandonedBy === "tiger" ? "Tiger" : "Goat";
+            setOpponentLeftMessage(`${leftRole} left the match.`);
+            return;
+          }
           if (shared.pieces) {
             setPieces(shared.pieces);
           }
@@ -169,37 +231,43 @@ function App() {
         }
       },
       (error) => {
-        alert(`Connection lost: ${error.message}`);
+        showToast(`Connection lost: ${error.message}`);
       },
     );
 
     return unsubscribe;
-  }, [session.roomId, session.status]);
+  }, [session.roomId, session.status, session.playerRole]);
 
   // CAPTURE LOGIC
+  // CAPTURE LOGIC (Strict straight-line collinearity check)
   function findCapture(from, to, boardPieces = pieces) {
+    const p1 = points[from];
+    const p3 = points[to];
+    if (!p1 || !p3) return null;
+
     for (let mid of connections[from] || []) {
       if (boardPieces[mid] !== "goat") continue;
       if (!connections[mid]?.includes(to)) continue;
-      if (connections[from].includes(to)) continue;
+      if (connections[from]?.includes(to)) continue;
 
-      const common = (connections[from] || []).filter((n) =>
-        (connections[to] || []).includes(n),
-      );
+      const p2 = points[mid];
+      if (!p2) continue;
 
-      if (
-        common.length > 1 &&
-        !(from >= 1 && from <= 6 && to >= 1 && to <= 6)
-      ) {
-        continue;
+      // Cross product === 0 ensures from -> mid -> to lie on an exact straight line
+      const crossProduct =
+        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+
+      // Ensure mid sits strictly between from and to (dot product > 0)
+      const dotProduct =
+        (p2.x - p1.x) * (p3.x - p2.x) + (p2.y - p1.y) * (p3.y - p2.y);
+
+      if (Math.abs(crossProduct) < 1 && dotProduct > 0) {
+        return mid;
       }
-
-      return mid;
     }
 
     return null;
   }
-
   function tigerCanMove(pos, currentPieces) {
     for (let next of connections[pos] || []) {
       if (!currentPieces[next]) {
@@ -548,7 +616,7 @@ function App() {
       setScreen("waiting");
     } catch (error) {
       console.error("Failed to create online room:", error);
-      alert(
+      showToast(
         `Could not create room: ${error.message}\n\nCheck your internet connection or Firebase Firestore rules.`,
       );
     } finally {
@@ -569,6 +637,58 @@ function App() {
         fontFamily: "Arial, sans-serif",
       }}
     >
+      {toast.text && (
+        <div
+          style={{
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+            padding: "12px 24px",
+            borderRadius: "999px",
+            background:
+              toast.type === "success"
+                ? "rgba(16, 185, 129, 0.95)"
+                : "rgba(239, 68, 68, 0.95)",
+            color: "#fff",
+            fontWeight: "700",
+            fontSize: "14px",
+            letterSpacing: "0.4px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
+            pointerEvents: "none",
+          }}
+        >
+          {toast.text}
+        </div>
+      )}
+      {toast.text && (
+        <div
+          style={{
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 9999,
+            padding: "12px 24px",
+            borderRadius: "999px",
+            background:
+              toast.type === "success"
+                ? "rgba(16, 185, 129, 0.95)"
+                : "rgba(239, 68, 68, 0.95)",
+            color: "#fff",
+            fontWeight: "700",
+            fontSize: "14px",
+            letterSpacing: "0.4px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+            backdropFilter: "blur(8px)",
+            pointerEvents: "none",
+          }}
+        >
+          {toast.text}
+        </div>
+      )}
       {screen === "home" && (
         <div className="home-screen">
           <div className="background-glow glow-1"></div>
@@ -613,27 +733,54 @@ function App() {
       {screen === "waiting" && (
         <div className="waiting-screen">
           <h1>Waiting Room</h1>
-          <p>Room Code: {session.roomId}</p>
+          <p>
+            Room Code: <strong>{session.roomId}</strong>
+          </p>
           <p>
             You are playing as:{" "}
             <strong>
               {session.playerRole === "tiger" ? "🐅 Tiger" : "🐐 Goat"}
             </strong>
           </p>
-          <p>Waiting for opponent...</p>
+          <p style={{ opacity: 0.75 }}>Waiting for opponent...</p>
 
           <button
             className="home-button primary"
-            onClick={() => {
+            onClick={async () => {
+              const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${session.roomId}`;
+              if (navigator.share) {
+                try {
+                  await navigator.share({
+                    title: "Aadu Puli Aattam — 1v1 Invite",
+                    text: `Join my Aadu Puli Aattam match! Room Code: ${session.roomId}`,
+                    url: inviteUrl,
+                  });
+                  return;
+                } catch {
+                  // Fall back to clipboard if share sheet is dismissed
+                }
+              }
               if (navigator.clipboard) {
-                navigator.clipboard.writeText(session.roomId);
-                alert("Room Code Copied");
+                await navigator.clipboard.writeText(inviteUrl);
+                showToast("Invite Link Copied!", "success");
               } else {
-                alert(`Room Code: ${session.roomId}`);
+                showToast(`Link: ${inviteUrl}`, "info");
               }
             }}
           >
-            Copy Room Code
+            Share Invite Link
+          </button>
+
+          <button
+            className="home-button secondary"
+            onClick={async () => {
+              if (navigator.clipboard) {
+                await navigator.clipboard.writeText(session.roomId);
+                showToast("Room Code Copied!", "success");
+              }
+            }}
+          >
+            Copy Code Only
           </button>
 
           <button
@@ -654,59 +801,54 @@ function App() {
           <input
             className="join-room-input"
             type="text"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            placeholder="Enter Your Name"
-          />
-          <input
-            className="join-room-input"
-            type="text"
+            maxLength={6}
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            placeholder="Enter Room Code"
+            placeholder="ENTER ROOM CODE"
+            style={{
+              textAlign: "center",
+              letterSpacing: "3px",
+              fontWeight: "bold",
+            }}
           />
 
           <button
             className="home-button primary"
             onClick={async () => {
-              if (!playerName.trim()) {
-                alert("Enter Your Name");
-                return;
-              }
-              if (!joinCode.trim()) {
-                alert("Enter Room Code");
+              const cleanCode = joinCode.trim().toUpperCase();
+              if (!cleanCode) {
+                showToast("Enter Room Code", "error");
                 return;
               }
 
               try {
-                const room = await getRoomFromFirestore(joinCode.trim());
+                const room = await getRoomFromFirestore(cleanCode);
                 if (!room) {
-                  alert("Room Not Found");
+                  showToast("Room Not Found", "error");
                   return;
                 }
 
                 const player = {
                   id: Date.now().toString(),
-                  name: playerName.trim(),
+                  name: getPlayerName() || "Guest (Goat)",
                   role: "goat",
                 };
 
-                await joinRoomInFirestore(joinCode.trim(), player);
+                await joinRoomInFirestore(cleanCode, player);
                 setSession((prev) => ({
                   ...prev,
-                  roomId: joinCode.trim(),
+                  roomId: cleanCode,
                   status: "waiting",
                   playerRole: "goat",
                 }));
-                savePlayerName(playerName.trim());
                 setScreen("waiting");
               } catch (error) {
                 console.error("Failed to join room:", error);
-                alert(`Could not join room: ${error.message}`);
+                showToast("Could not join room.", "error");
               }
             }}
           >
-            Join
+            Join Match
           </button>
 
           <button
@@ -734,6 +876,27 @@ function App() {
 
       {screen === "game" && (
         <div className="game-main-container">
+          {opponentLeftMessage && (
+            <div className="tutorial-overlay">
+              <div className="tutorial-card">
+                <h2>Match Ended</h2>
+                <p>{opponentLeftMessage}</p>
+                <button
+                  className="tutorial-button"
+                  onClick={() => {
+                    setOpponentLeftMessage("");
+                    setSession(createGameSession());
+                    setSelected(null);
+                    setWinner(null);
+                    setLastMove(null);
+                    setScreen("home");
+                  }}
+                >
+                  Back to Home
+                </button>
+              </div>
+            </div>
+          )}
           {/* INFO PANEL */}
           <div
             className="game-sidebar"
@@ -844,6 +1007,32 @@ function App() {
             >
               Goats Killed: {goatsKilled}
             </h3>
+            <h3
+              style={{
+                color: "white",
+                fontWeight: "500",
+                marginBottom: "18px",
+              }}
+            >
+              Tigers Blocked: {blockedTigersCount}/3
+            </h3>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "12px" }}>
+              <button
+                onClick={toggleMute}
+                className="restart-button"
+                style={{ flex: 1, background: "#1f2937" }}
+              >
+                {isMuted ? "🔇 Unmute" : "🔊 Sound"}
+              </button>
+              <button
+                onClick={leaveMatch}
+                className="restart-button"
+                style={{ flex: 1, background: "#3f1d1d" }}
+              >
+                Leave
+              </button>
+            </div>
 
             {winner && (
               <button onClick={restartGame} className="restart-button">
@@ -891,7 +1080,25 @@ function App() {
                   return null;
                 }),
               )}
-
+              {/* LAST-MOVE CONNECTING TRAIL BEAM */}
+              {lastMove?.from !== null &&
+                lastMove?.from !== undefined &&
+                lastMove?.to !== undefined &&
+                points[lastMove.from] &&
+                points[lastMove.to] && (
+                  <line
+                    x1={points[lastMove.from].x}
+                    y1={points[lastMove.from].y}
+                    x2={points[lastMove.to].x}
+                    y2={points[lastMove.to].y}
+                    stroke="#fbbf24"
+                    strokeWidth="6"
+                    strokeDasharray="10 6"
+                    strokeLinecap="round"
+                    opacity="0.85"
+                    pointerEvents="none"
+                  />
+                )}
               {/* POINTS */}
               {points.map((p) => {
                 const isNormalMove = normalMoves.has(p.id);
@@ -905,20 +1112,22 @@ function App() {
 
                 return (
                   <g key={p.id} onClick={() => handleClick(p.id)}>
-                    {/* Last-Move Indicator Ring */}
+                    {/* Last-Move Amber Indicator Ring */}
                     {(isLastFrom || isLastTo) && !isHighlighted && (
                       <circle
                         cx={p.x}
                         cy={p.y}
-                        r="29"
-                        fill="none"
-                        stroke={
+                        r="30"
+                        fill={
                           isLastTo
-                            ? "rgba(56, 189, 248, 0.85)"
-                            : "rgba(56, 189, 248, 0.4)"
+                            ? "rgba(251, 191, 36, 0.16)"
+                            : "rgba(251, 191, 36, 0.06)"
                         }
-                        strokeWidth={isLastTo ? "3" : "2"}
-                        strokeDasharray={isLastFrom ? "4 4" : "none"}
+                        stroke={
+                          isLastTo ? "#fbbf24" : "rgba(251, 191, 36, 0.55)"
+                        }
+                        strokeWidth={isLastTo ? "3.5" : "2.5"}
+                        strokeDasharray={isLastFrom ? "5 4" : "none"}
                         pointerEvents="none"
                       />
                     )}
@@ -977,15 +1186,34 @@ function App() {
                 const point = points[pos];
                 if (!point) return null;
 
+                const isNewlyPlacedGoat =
+                  type === "goat" &&
+                  lastMove?.from === null &&
+                  lastMove?.to === Number(pos);
+
                 return (
                   <g key={pos} onClick={() => handleClick(Number(pos))}>
+                    {/* Pulsing Beacon Ring for Newly Placed Goat */}
+                    {isNewlyPlacedGoat && (
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r="31"
+                        fill="none"
+                        stroke="#fbbf24"
+                        strokeWidth="3.5"
+                        className="new-goat-ring"
+                        pointerEvents="none"
+                      />
+                    )}
+
                     <circle
                       cx={point.x}
                       cy={point.y}
                       r="24"
                       fill={type === "tiger" ? "#ff9f1c" : "#38ffb3"}
-                      stroke="#ffffffaa"
-                      strokeWidth="4"
+                      stroke={isNewlyPlacedGoat ? "#fbbf24" : "#ffffffaa"}
+                      strokeWidth={isNewlyPlacedGoat ? "5" : "4"}
                       style={{
                         transition: "all 0.25s ease",
                         filter:
@@ -993,11 +1221,40 @@ function App() {
                             ? type === "tiger"
                               ? "drop-shadow(0 0 22px rgba(255,140,0,1))"
                               : "drop-shadow(0 0 18px rgba(46,230,166,1))"
-                            : type === "tiger"
-                              ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
-                              : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
+                            : isNewlyPlacedGoat
+                              ? "drop-shadow(0 0 16px rgba(251,191,36,0.95))"
+                              : type === "tiger"
+                                ? "drop-shadow(0 0 14px rgba(255,140,0,0.85))"
+                                : "drop-shadow(0 0 12px rgba(46,230,166,0.85))",
                       }}
                     />
+
+                    {/* Crisp "NEW" Pill Badge on the Latest Placed Goat */}
+                    {isNewlyPlacedGoat && (
+                      <g pointerEvents="none">
+                        <rect
+                          x={point.x - 18}
+                          y={point.y - 36}
+                          width="36"
+                          height="15"
+                          rx="7.5"
+                          fill="#fbbf24"
+                          stroke="#111"
+                          strokeWidth="1.5"
+                        />
+                        <text
+                          x={point.x}
+                          y={point.y - 25.5}
+                          textAnchor="middle"
+                          fill="#111"
+                          fontSize="9.5"
+                          fontWeight="900"
+                          letterSpacing="0.5"
+                        >
+                          NEW
+                        </text>
+                      </g>
+                    )}
 
                     <foreignObject
                       x={point.x - 14}

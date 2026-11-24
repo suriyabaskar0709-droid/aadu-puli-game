@@ -622,3 +622,17 @@ overflow: hidden;
 
   margin-bottom: 20px;
 }
+@keyframes newGoatBeacon {
+  0%, 100% {
+    r: 30;
+    opacity: 0.95;
+  }
+  50% {
+    r: 35;
+    opacity: 0.45;
+  }
+}
+
+.new-goat-ring {
+  animation: newGoatBeacon 1.4s ease-in-out infinite;
+}
